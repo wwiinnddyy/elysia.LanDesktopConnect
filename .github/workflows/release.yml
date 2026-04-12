@@ -51,10 +51,17 @@ jobs:
         shell: pwsh
         run: |
           $feedPath = Join-Path (Resolve-Path ".\Elysia.LanDesktopConnect").Path "packages"
+          New-Item -ItemType Directory -Force -Path $feedPath | Out-Null
+          
+          # Pack LanMountainDesktop.Shared.Contracts
+          $contractsProject = Join-Path (Resolve-Path ".\LanMountainDesktop\LanMountainDesktop.Shared.Contracts").Path "LanMountainDesktop.Shared.Contracts.csproj"
+          dotnet pack $contractsProject -c Release -o $feedPath -p:ContinuousIntegrationBuild=true
+          
+          # Pack LanMountainDesktop.PluginSdk
           $sdkProject = Join-Path (Resolve-Path ".\LanMountainDesktop\LanMountainDesktop.PluginSdk").Path "LanMountainDesktop.PluginSdk.csproj"
-          .\Elysia.LanDesktopConnect\scripts\Initialize-LocalPackageFeed.ps1 `
-            -FeedPath $feedPath `
-            -PluginSdkProjectPath $sdkProject
+          dotnet pack $sdkProject -c Release -o $feedPath -p:ContinuousIntegrationBuild=true
+          
+          Write-Host "Local package feed initialized at '$feedPath'."
 
       - name: Resolve requested release version
         id: release_plan
