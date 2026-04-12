@@ -117,6 +117,17 @@ jobs:
         shell: pwsh
         run: dotnet build .\Elysia.LanDesktopConnect\Elysia.LanDesktopConnect.csproj -c Release -v minimal
 
+      - name: Generate market manifest
+        shell: pwsh
+        run: |
+          $verifiedPackagePath = Resolve-Path ".\Elysia.LanDesktopConnect\${{ steps.metadata.outputs.asset_name }}"
+          .\Elysia.LanDesktopConnect\scripts\New-MarketManifest.ps1 `
+            -TemplatePath .\Elysia.LanDesktopConnect\airappmarket-entry.template.json `
+            -PackagePath $verifiedPackagePath `
+            -Version "${{ steps.metadata.outputs.version }}" `
+            -ReleaseTag "${{ steps.metadata.outputs.release_tag }}" `
+            -OutputPath .\Elysia.LanDesktopConnect\artifacts\market-manifest.json
+
       - name: Create or update tag
         shell: pwsh
         run: |
@@ -148,8 +159,10 @@ jobs:
 
             ## 文件说明
             - `${{ steps.metadata.outputs.asset_name }}`: 插件包文件
+            - `market-manifest.json`: 市场清单文件
           files: |
             Elysia.LanDesktopConnect/${{ steps.metadata.outputs.asset_name }}
+            Elysia.LanDesktopConnect/artifacts/market-manifest.json
           fail_on_unmatched_files: true
           overwrite_files: true
           draft: false

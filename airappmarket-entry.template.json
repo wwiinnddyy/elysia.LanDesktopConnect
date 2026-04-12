@@ -1,0 +1,29 @@
+{
+  "id": "Elysia.LanDesktopConnect",
+  "name": "Elysia IPC Bridge",
+  "description": "基于 Elysia 的 IPC 网关插件，实现阑山桌面与外部应用的双向通信。支持 Tauri、Web、Rust 等应用通过 WebSocket 连接。",
+  "author": "Elysia",
+  "version": "",
+  "apiVersion": "4.0.0",
+  "minHostVersion": "0.0.1",
+  "downloadUrl": "",
+  "sha256": "",
+  "packageSizeBytes": 0,
+  "iconUrl": "https://raw.githubusercontent.com/你的用户名/elysia.LanDesktopConnect/main/assets/elysia.svg",
+  "releaseTag": "",
+  "releaseAssetName": "",
+  "projectUrl": "https://github.com/你的用户名/elysia.LanDesktopConnect",
+  "readmeUrl": "https://raw.githubusercontent.com/你的用户名/elysia.LanDesktopConnect/main/README.md",
+  "homepageUrl": "https://github.com/你的用户名/elysia.LanDesktopConnect",
+  "repositoryUrl": "https://github.com/你的用户名/elysia.LanDesktopConnect",
+  "tags": [
+    "ipc",
+    "gateway",
+    "elysia",
+    "websocket",
+    "bridge"
+  ],
+  "publishedAt": "",
+  "updatedAt": "",
+  "releaseNotes": "Elysia IPC Bridge 插件提供跨应用通信能力，让外部应用能够与阑山桌面进行双向数据交换。支持功能注册、数据同步、事件广播等特性。"
+}
