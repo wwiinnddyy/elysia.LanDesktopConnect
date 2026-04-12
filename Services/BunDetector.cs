@@ -10,12 +10,10 @@ public class BunDetector
 {
     public async Task<BunDetectionResult> DetectAsync()
     {
-        // Windows
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             return await DetectOnWindowsAsync();
         }
-        // Linux/macOS
         else
         {
             return await DetectOnUnixAsync();
@@ -24,18 +22,16 @@ public class BunDetector
 
     private async Task<BunDetectionResult> DetectOnWindowsAsync()
     {
-        // 1. 检查 PATH
         var pathBun = FindInPath("bun.exe");
         if (!string.IsNullOrEmpty(pathBun))
         {
             var version = await GetBunVersionAsync(pathBun);
             if (version != null)
             {
-                return BunDetectionResult.Found(pathBun, version);
+                return BunDetectionResult.CreateFound(pathBun, version);
             }
         }
 
-        // 2. 检查常见位置
         var commonPaths = new[]
         {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "bun", "bin", "bun.exe"),
@@ -51,17 +47,16 @@ public class BunDetector
                 var version = await GetBunVersionAsync(path);
                 if (version != null)
                 {
-                    return BunDetectionResult.Found(path, version);
+                    return BunDetectionResult.CreateFound(path, version);
                 }
             }
         }
 
-        return BunDetectionResult.NotFound();
+        return BunDetectionResult.CreateNotFound();
     }
 
     private async Task<BunDetectionResult> DetectOnUnixAsync()
     {
-        // 1. which bun
         var whichResult = await RunCommandAsync("which", "bun");
         if (whichResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(whichResult.Output))
         {
@@ -69,11 +64,10 @@ public class BunDetector
             var version = await GetBunVersionAsync(path);
             if (version != null)
             {
-                return BunDetectionResult.Found(path, version);
+                return BunDetectionResult.CreateFound(path, version);
             }
         }
 
-        // 2. 检查常见位置
         var commonPaths = new[]
         {
             "/usr/local/bin/bun",
@@ -89,12 +83,12 @@ public class BunDetector
                 var version = await GetBunVersionAsync(path);
                 if (version != null)
                 {
-                    return BunDetectionResult.Found(path, version);
+                    return BunDetectionResult.CreateFound(path, version);
                 }
             }
         }
 
-        return BunDetectionResult.NotFound();
+        return BunDetectionResult.CreateNotFound();
     }
 
     private string? FindInPath(string executable)
@@ -127,7 +121,6 @@ public class BunDetector
         }
         catch
         {
-            // 忽略错误
         }
 
         return null;
@@ -138,7 +131,6 @@ public class BunDetector
         var versionString = await GetBunVersionAsync(bunPath);
         if (string.IsNullOrEmpty(versionString)) return false;
 
-        // 解析版本号 (例如 "1.1.3" 或 "1.1.3+abcdef")
         var versionPart = versionString.Split('+')[0].Trim();
         if (Version.TryParse(versionPart, out var version))
         {
@@ -171,17 +163,17 @@ public class BunDetector
     }
 }
 
-public record BunDetectionResult
+public sealed class BunDetectionResult
 {
-    public bool Found { get; init; }
+    public bool IsFound { get; init; }
     public string? Path { get; init; }
     public string? Version { get; init; }
 
-    public static BunDetectionResult Found(string path, string version)
-        => new() { Found = true, Path = path, Version = version };
+    public static BunDetectionResult CreateFound(string path, string version)
+        => new() { IsFound = true, Path = path, Version = version };
 
-    public static BunDetectionResult NotFound()
-        => new() { Found = false };
+    public static BunDetectionResult CreateNotFound()
+        => new() { IsFound = false };
 }
 
 public record CommandResult(int ExitCode, string Output, string Error);

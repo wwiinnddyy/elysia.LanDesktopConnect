@@ -23,7 +23,7 @@ public class ElysiaGatewayHostedService : IHostedService
         // 检测 Bun
         var detectionResult = await _bunDetector.DetectAsync();
         
-        if (!detectionResult.Found)
+        if (!detectionResult.IsFound)
         {
             // Bun 未安装，记录日志但不阻止插件加载
             Console.WriteLine("[ElysiaGateway] Bun not found. Gateway will not start automatically.");

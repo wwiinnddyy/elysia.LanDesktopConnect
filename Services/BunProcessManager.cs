@@ -1,14 +1,15 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using LanMountainDesktop.PluginSdk;
-using ReactiveUI;
 
 namespace Elysia.LanDesktopConnect.Services;
 
-public class BunProcessManager : ReactiveObject, IDisposable
+public class BunProcessManager : INotifyPropertyChanged, IDisposable
 {
     private readonly IPluginSettingsService _settingsService;
     private readonly IPluginMessageBus _messageBus;
@@ -17,26 +18,58 @@ public class BunProcessManager : ReactiveObject, IDisposable
     private int _restartCount;
     private readonly object _lock = new();
 
-    public BunStatus Status { get; private set; } = BunStatus.NotStarted;
-    public string? BunPath { get; private set; }
-    public string? BunVersion { get; private set; }
-    public int? GatewayPort { get; private set; }
-    public DateTime? StartTime { get; private set; }
+    private BunStatus _status = BunStatus.NotStarted;
+    private string? _bunPath;
+    private string? _bunVersion;
+    private int? _gatewayPort;
+    private DateTime? _startTime;
+
+    public BunStatus Status
+    {
+        get => _status;
+        private set { _status = value; OnPropertyChanged(); }
+    }
+
+    public string? BunPath
+    {
+        get => _bunPath;
+        private set { _bunPath = value; OnPropertyChanged(); }
+    }
+
+    public string? BunVersion
+    {
+        get => _bunVersion;
+        private set { _bunVersion = value; OnPropertyChanged(); }
+    }
+
+    public int? GatewayPort
+    {
+        get => _gatewayPort;
+        private set { _gatewayPort = value; OnPropertyChanged(); }
+    }
+
+    public DateTime? StartTime
+    {
+        get => _startTime;
+        private set { _startTime = value; OnPropertyChanged(); }
+    }
+
     public string DataDirectory { get; }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    public event EventHandler<BunStatus>? StatusChanged;
 
     public BunProcessManager(IPluginRuntimeContext runtimeContext, IPluginSettingsService settingsService, IPluginMessageBus messageBus)
     {
         _settingsService = settingsService;
         _messageBus = messageBus;
         DataDirectory = runtimeContext.DataDirectory;
-        
-        // 确保数据目录存在
         Directory.CreateDirectory(DataDirectory);
     }
 
     public async Task<bool> InitializeAsync(BunDetectionResult detectionResult)
     {
-        if (!detectionResult.Found || string.IsNullOrEmpty(detectionResult.Path))
+        if (!detectionResult.IsFound || string.IsNullOrEmpty(detectionResult.Path))
         {
             UpdateStatus(BunStatus.BunNotInstalled);
             return false;
@@ -44,7 +77,6 @@ public class BunProcessManager : ReactiveObject, IDisposable
 
         BunPath = detectionResult.Path;
         BunVersion = detectionResult.Version;
-        
         UpdateStatus(BunStatus.Stopped);
         return true;
     }
@@ -69,11 +101,9 @@ public class BunProcessManager : ReactiveObject, IDisposable
 
         try
         {
-            // 获取端口配置
             var isAutoPort = _settingsService.GetValue("ipc.isAutoPort", true);
             var port = isAutoPort ? 0 : _settingsService.GetValue("ipc.manualPort", 34567);
 
-            // 准备启动参数
             var startInfo = new ProcessStartInfo
             {
                 FileName = BunPath,
@@ -85,15 +115,13 @@ public class BunProcessManager : ReactiveObject, IDisposable
                 CreateNoWindow = true,
             };
 
-            // 设置环境变量
             startInfo.Environment["LMD_PLUGIN_PIPE"] = GetPipeName();
             startInfo.Environment["LMD_PLUGIN_DATA_DIR"] = DataDirectory;
             startInfo.Environment["LMD_GATEWAY_PORT"] = port.ToString();
             startInfo.Environment["LMD_LOG_LEVEL"] = _settingsService.GetValue("ipc.logLevel", "info");
 
             _bunProcess = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-            
-            // 输出日志
+
             _bunProcess.OutputDataReceived += (s, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data))
@@ -111,11 +139,10 @@ public class BunProcessManager : ReactiveObject, IDisposable
                 }
             };
 
-            // 进程退出处理
             _bunProcess.Exited += async (s, e) =>
             {
                 LogInfo($"Elysia process exited with code {_bunProcess.ExitCode}");
-                
+
                 if (_cts?.IsCancellationRequested == false)
                 {
                     await HandleProcessExitAsync();
@@ -127,13 +154,12 @@ public class BunProcessManager : ReactiveObject, IDisposable
             _bunProcess.BeginErrorReadLine();
 
             StartTime = DateTime.Now;
-            
-            // 等待启动成功
+
             await WaitForStartupAsync(_cts.Token);
-            
+
             UpdateStatus(BunStatus.Running);
             _restartCount = 0;
-            
+
             LogInfo($"Elysia gateway started on port {GatewayPort}");
         }
         catch (Exception ex)
@@ -160,7 +186,6 @@ public class BunProcessManager : ReactiveObject, IDisposable
         {
             try
             {
-                // 尝试优雅关闭
                 _bunProcess.Kill(true);
                 await _bunProcess.WaitForExitAsync(TimeSpan.FromSeconds(5));
             }
@@ -178,7 +203,7 @@ public class BunProcessManager : ReactiveObject, IDisposable
     public async Task RestartAsync()
     {
         await StopAsync();
-        await Task.Delay(500); // 短暂延迟
+        await Task.Delay(500);
         await StartAsync();
     }
 
@@ -188,16 +213,16 @@ public class BunProcessManager : ReactiveObject, IDisposable
         GatewayPort = null;
 
         var autoRestart = _settingsService.GetValue("ipc.autoRestart", true);
-        
+
         if (autoRestart && _restartCount < 5 && _cts?.IsCancellationRequested == false)
         {
             _restartCount++;
             var delay = TimeSpan.FromSeconds(Math.Min(_restartCount * 2, 30));
-            
+
             LogInfo($"Auto-restarting in {delay.TotalSeconds} seconds... (attempt {_restartCount}/5)");
-            
+
             await Task.Delay(delay);
-            
+
             try
             {
                 await StartAsync();
@@ -211,7 +236,6 @@ public class BunProcessManager : ReactiveObject, IDisposable
 
     private async Task WaitForStartupAsync(CancellationToken ct)
     {
-        // 等待最多 10 秒
         var timeout = TimeSpan.FromSeconds(10);
         var sw = Stopwatch.StartNew();
 
@@ -230,8 +254,6 @@ public class BunProcessManager : ReactiveObject, IDisposable
 
     private void ParsePortFromOutput(string line)
     {
-        // 解析 Elysia 输出的端口信息
-        // 例如: "🚀 Elysia gateway running on port 34567"
         if (line.Contains("port") || line.Contains("Port"))
         {
             var parts = line.Split(' ');
@@ -240,7 +262,6 @@ public class BunProcessManager : ReactiveObject, IDisposable
                 if (int.TryParse(parts[i + 1], out var port) && port > 0)
                 {
                     GatewayPort = port;
-                    this.RaisePropertyChanged(nameof(GatewayPort));
                     break;
                 }
             }
@@ -249,17 +270,15 @@ public class BunProcessManager : ReactiveObject, IDisposable
 
     private string GetElysiaGatewayDirectory()
     {
-        // Elysia 网关代码位于插件目录下的 elysia-gateway 文件夹
         var pluginDir = Path.GetDirectoryName(GetType().Assembly.Location)!;
         return Path.Combine(pluginDir, "elysia-gateway");
     }
 
     private string GetPipeName()
     {
-        // 生成唯一的管道名称
         var userName = Environment.UserName;
         var pipeId = $"LMD_Elysia_{userName}".GetHashCode().ToString("X8");
-        
+
         if (OperatingSystem.IsWindows())
         {
             return $"\\\\.\\pipe\\{pipeId}";
@@ -273,7 +292,7 @@ public class BunProcessManager : ReactiveObject, IDisposable
     private void UpdateStatus(BunStatus status)
     {
         Status = status;
-        this.RaisePropertyChanged(nameof(Status));
+        StatusChanged?.Invoke(this, status);
         _messageBus.Publish(new BunStatusChangedEvent(status));
     }
 
@@ -289,6 +308,11 @@ public class BunProcessManager : ReactiveObject, IDisposable
         var logFile = Path.Combine(DataDirectory, "elysia-gateway.log");
         var logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [ERROR] {message}{Environment.NewLine}";
         File.AppendAllText(logFile, logEntry);
+    }
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
     public void Dispose()

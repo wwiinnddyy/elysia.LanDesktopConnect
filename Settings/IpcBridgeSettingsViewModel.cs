@@ -1,16 +1,15 @@
 using System;
 using System.Collections.ObjectModel;
-using System.Reactive;
-using System.Reactive.Linq;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Elysia.LanDesktopConnect.Services;
 using LanMountainDesktop.PluginSdk;
-using ReactiveUI;
 
 namespace Elysia.LanDesktopConnect.Settings;
 
-public class IpcBridgeSettingsViewModel : ReactiveObject
+public class IpcBridgeSettingsViewModel : INotifyPropertyChanged
 {
     private readonly IPluginSettingsService _settingsService;
     private readonly BunProcessManager _bunManager;
@@ -25,62 +24,43 @@ public class IpcBridgeSettingsViewModel : ReactiveObject
         _bunManager = bunManager;
         _messageBus = messageBus;
 
-        // 初始化命令
-        CheckBunCommand = ReactiveCommand.CreateFromTask(CheckBunAsync);
-        InstallBunCommand = ReactiveCommand.Create(ShowInstallGuide);
-        ToggleGatewayCommand = ReactiveCommand.CreateFromTask(ToggleGatewayAsync);
-        RestartGatewayCommand = ReactiveCommand.CreateFromTask(RestartGatewayAsync);
-        ViewLogsCommand = ReactiveCommand.Create(ViewLogs);
-        RefreshAppsCommand = ReactiveCommand.Create(RefreshApps);
-        ResetSettingsCommand = ReactiveCommand.Create(ResetSettings);
+        _bunManager.StatusChanged += OnBunStatusChanged;
+        _bunManager.PropertyChanged += OnBunManagerPropertyChanged;
 
-        // 订阅状态变化
-        _bunManager.WhenAnyValue(x => x.Status)
-            .Subscribe(_ =>
-            {
-                this.RaisePropertyChanged(nameof(GatewayStatusDescription));
-                this.RaisePropertyChanged(nameof(GatewayStatusIcon));
-                this.RaisePropertyChanged(nameof(IsGatewayRunning));
-                this.RaisePropertyChanged(nameof(CanToggleGateway));
-                this.RaisePropertyChanged(nameof(ToggleGatewayButtonText));
-            });
+        CheckBunCommand = new AsyncRelayCommand(CheckBunAsync);
+        InstallBunCommand = new RelayCommand(ShowInstallGuide);
+        ToggleGatewayCommand = new AsyncRelayCommand(ToggleGatewayAsync);
+        RestartGatewayCommand = new AsyncRelayCommand(RestartGatewayAsync);
+        ViewLogsCommand = new RelayCommand(ViewLogs);
+        RefreshAppsCommand = new RelayCommand(RefreshApps);
+        ResetSettingsCommand = new RelayCommand(ResetSettings);
 
-        _bunManager.WhenAnyValue(x => x.GatewayPort)
-            .Subscribe(_ => this.RaisePropertyChanged(nameof(GatewayPortText)));
-
-        // 定时更新
-        Observable.Interval(TimeSpan.FromSeconds(1))
-            .Subscribe(_ => this.RaisePropertyChanged(nameof(GatewayUptimeText)));
-
-        // 加载设置
         LoadSettings();
-
-        // 初始检测
         _ = CheckBunAsync();
     }
 
     #region Bun 状态
 
-    private BunStatus _bunStatus = BunStatus.Checking;
+    private BunStatus _bunStatus = BunStatus.NotStarted;
     private string _bunVersion = "";
     private string _bunPath = "";
 
     public BunStatus BunStatus
     {
         get => _bunStatus;
-        set => this.RaiseAndSetIfChanged(ref _bunStatus, value);
+        set { _bunStatus = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsBunInstalled)); OnPropertyChanged(nameof(IsBunNotInstalled)); OnPropertyChanged(nameof(BunStatusDescription)); OnPropertyChanged(nameof(BunStatusIcon)); }
     }
 
     public string BunVersion
     {
         get => _bunVersion;
-        set => this.RaiseAndSetIfChanged(ref _bunVersion, value);
+        set { _bunVersion = value; OnPropertyChanged(); OnPropertyChanged(nameof(BunStatusDescription)); }
     }
 
     public string BunPath
     {
         get => _bunPath;
-        set => this.RaiseAndSetIfChanged(ref _bunPath, value);
+        set { _bunPath = value; OnPropertyChanged(); }
     }
 
     public bool IsBunInstalled => BunStatus == BunStatus.Installed;
@@ -94,9 +74,7 @@ public class IpcBridgeSettingsViewModel : ReactiveObject
         _ => "未知状态"
     };
 
-    public string BunStatusIcon => BunStatus == BunStatus.Installed
-        ? "CheckmarkCircle"
-        : "ErrorCircle";
+    public string BunStatusIcon => BunStatus == BunStatus.Installed ? "CheckmarkCircle" : "ErrorCircle";
 
     #endregion
 
@@ -122,7 +100,6 @@ public class IpcBridgeSettingsViewModel : ReactiveObject
 
     public bool IsGatewayRunning => _bunManager.Status == BunStatus.Running;
     public bool CanToggleGateway => IsBunInstalled && _bunManager.Status != BunStatus.Starting;
-
     public string ToggleGatewayButtonText => IsGatewayRunning ? "停止" : "启动";
 
     public string GatewayPortText => _bunManager.GatewayPort?.ToString() ?? "-";
@@ -168,19 +145,19 @@ public class IpcBridgeSettingsViewModel : ReactiveObject
     public bool IsAutoPort
     {
         get => _isAutoPort;
-        set { this.RaiseAndSetIfChanged(ref _isAutoPort, value); SaveSettings(); }
+        set { _isAutoPort = value; OnPropertyChanged(); SaveSettings(); }
     }
 
     public int ManualPortNumber
     {
         get => _manualPort;
-        set { this.RaiseAndSetIfChanged(ref _manualPort, value); SaveSettings(); }
+        set { _manualPort = value; OnPropertyChanged(); SaveSettings(); }
     }
 
     public bool AutoRestart
     {
         get => _autoRestart;
-        set { this.RaiseAndSetIfChanged(ref _autoRestart, value); SaveSettings(); }
+        set { _autoRestart = value; OnPropertyChanged(); SaveSettings(); }
     }
 
     public string[] LogLevels { get; } = { "调试", "信息", "警告", "错误" };
@@ -188,13 +165,13 @@ public class IpcBridgeSettingsViewModel : ReactiveObject
     public string SelectedLogLevel
     {
         get => _selectedLogLevel;
-        set { this.RaiseAndSetIfChanged(ref _selectedLogLevel, value); SaveSettings(); }
+        set { _selectedLogLevel = value; OnPropertyChanged(); SaveSettings(); }
     }
 
     public bool DebugMode
     {
         get => _debugMode;
-        set { this.RaiseAndSetIfChanged(ref _debugMode, value); SaveSettings(); }
+        set { _debugMode = value; OnPropertyChanged(); SaveSettings(); }
     }
 
     #endregion
@@ -221,13 +198,12 @@ public class IpcBridgeSettingsViewModel : ReactiveObject
         var detector = new BunDetector();
         var result = await detector.DetectAsync();
 
-        if (result.Found)
+        if (result.IsFound)
         {
             BunStatus = BunStatus.Installed;
             BunVersion = result.Version ?? "未知";
             BunPath = result.Path;
 
-            // 初始化 Bun 进程管理器
             await _bunManager.InitializeAsync(result);
         }
         else
@@ -240,20 +216,6 @@ public class IpcBridgeSettingsViewModel : ReactiveObject
 
     private void ShowInstallGuide()
     {
-        // 显示安装指南
-        var guide = @"安装 Bun：
-
-Windows:
-powershell -c ""irm bun.sh/install.ps1 | iex""
-
-Linux/macOS:
-curl -fsSL https://bun.sh/install | bash
-
-安装完成后点击""重新检测""。
-";
-
-        // 这里可以通过消息总线或对话框显示
-        // 简化处理，直接打开浏览器
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
             FileName = "https://bun.sh/docs/installation",
@@ -296,9 +258,7 @@ curl -fsSL https://bun.sh/install | bash
 
     private void RefreshApps()
     {
-        // 从 Elysia 获取连接的应用列表
         ConnectedApps.Clear();
-        // TODO: 实现获取逻辑
     }
 
     private void ResetSettings()
@@ -329,10 +289,40 @@ curl -fsSL https://bun.sh/install | bash
         _settingsService.SetValue("ipc.debugMode", DebugMode);
     }
 
+    private void OnBunStatusChanged(object? sender, BunStatus status)
+    {
+        OnPropertyChanged(nameof(GatewayStatusDescription));
+        OnPropertyChanged(nameof(GatewayStatusIcon));
+        OnPropertyChanged(nameof(IsGatewayRunning));
+        OnPropertyChanged(nameof(CanToggleGateway));
+        OnPropertyChanged(nameof(ToggleGatewayButtonText));
+    }
+
+    private void OnBunManagerPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(BunProcessManager.GatewayPort))
+        {
+            OnPropertyChanged(nameof(GatewayPortText));
+            OnPropertyChanged(nameof(GatewayStatusDescription));
+        }
+
+        if (e.PropertyName == nameof(BunProcessManager.StartTime))
+        {
+            OnPropertyChanged(nameof(GatewayUptimeText));
+        }
+    }
+
     #endregion
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
 }
 
-public class ConnectedAppViewModel : ReactiveObject
+public class ConnectedAppViewModel : INotifyPropertyChanged
 {
     public string AppId { get; set; } = "";
     public string AppName { get; set; } = "";
@@ -348,4 +338,38 @@ public class ConnectedAppViewModel : ReactiveObject
     public string AppDetails => $"{AppType} • {AppId}";
     public DateTime ConnectedAt { get; set; }
     public string ConnectedTime => ConnectedAt.ToString("HH:mm:ss");
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+internal class RelayCommand : ICommand
+{
+    private readonly Action _execute;
+    private readonly Func<bool>? _canExecute;
+
+    public RelayCommand(Action execute, Func<bool>? canExecute = null)
+    {
+        _execute = execute;
+        _canExecute = canExecute;
+    }
+
+    public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
+    public void Execute(object? parameter) => _execute();
+    public event EventHandler? CanExecuteChanged;
+}
+
+internal class AsyncRelayCommand : ICommand
+{
+    private readonly Func<Task> _execute;
+    private readonly Func<bool>? _canExecute;
+
+    public AsyncRelayCommand(Func<Task> execute, Func<bool>? canExecute = null)
+    {
+        _execute = execute;
+        _canExecute = canExecute;
+    }
+
+    public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
+    public async void Execute(object? parameter) => await _execute();
+    public event EventHandler? CanExecuteChanged;
 }
