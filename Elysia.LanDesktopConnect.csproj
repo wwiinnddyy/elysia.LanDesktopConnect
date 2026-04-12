@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.0.1</Version>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <OutputPath>bin\$(Configuration)\$(TargetFramework)\content\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <LanMountainPluginBuildOutputDirectory>$(OutputPath)</LanMountainPluginBuildOutputDirectory>
+    <LanMountainPluginPackageVersion>$(Version)</LanMountainPluginPackageVersion>
+    <LanMountainPluginPackageOutputDirectory>$(MSBuildThisFileDirectory)</LanMountainPluginPackageOutputDirectory>
+    <LanMountainPluginPackageFileName>$(AssemblyName).$(LanMountainPluginPackageVersion)$(LanMountainPluginPackageExtension)</LanMountainPluginPackageFileName>
+    <LanMountainPluginPackagePath>$(LanMountainPluginPackageOutputDirectory)$(LanMountainPluginPackageFileName)</LanMountainPluginPackagePath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LanMountainDesktop.PluginSdk" Version="4.0.0" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="Avalonia" Version="11.2.0" />
+    <PackageReference Include="FluentAvaloniaUI" Version="2.2.0" />
+    <PackageReference Include="ReactiveUI" Version="20.1.1" />
+    <PackageReference Include="System.IO.Pipes" Version="4.3.0" />
+    <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Localization\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="elysia-gateway\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

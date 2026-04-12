@@ -1,0 +1,159 @@
+name: Elysia.LanDesktopConnect Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example 0.0.1"
+        required: true
+        type: string
+
+env:
+  DOTNET_VERSION: "10.0.x"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: elysia-landesktopconnect-release-${{ github.event.inputs.version || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      release_tag: ${{ steps.metadata.outputs.release_tag }}
+      asset_name: ${{ steps.metadata.outputs.asset_name }}
+      target_commitish: ${{ steps.release_source.outputs.target_commitish }}
+
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: Elysia.LanDesktopConnect
+          ref: main
+
+      - name: Checkout LanMountainDesktop
+        uses: actions/checkout@v4
+        with:
+          repository: wwiinnddyy/LanMountainDesktop
+          fetch-depth: 0
+          path: LanMountainDesktop
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Initialize local package feed
+        shell: pwsh
+        run: |
+          $feedPath = Join-Path (Resolve-Path ".\Elysia.LanDesktopConnect").Path "packages"
+          $sdkProject = Join-Path (Resolve-Path ".\LanMountainDesktop\LanMountainDesktop.PluginSdk").Path "LanMountainDesktop.PluginSdk.csproj"
+          .\Elysia.LanDesktopConnect\scripts\Initialize-LocalPackageFeed.ps1 `
+            -FeedPath $feedPath `
+            -PluginSdkProjectPath $sdkProject
+
+      - name: Resolve requested release version
+        id: release_plan
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.version }}".Trim()
+          if ($version.StartsWith("v", [System.StringComparison]::OrdinalIgnoreCase)) {
+            $version = $version.Substring(1)
+          }
+
+          $releaseTag = "v$version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
+
+      - name: Update main with release version
+        id: release_source
+        shell: pwsh
+        run: |
+          $repoPath = (Resolve-Path ".\Elysia.LanDesktopConnect").Path
+          $version = "${{ steps.release_plan.outputs.version }}"
+          $releaseTag = "${{ steps.release_plan.outputs.release_tag }}"
+          $versionFiles = @(
+            "Elysia.LanDesktopConnect.csproj",
+            "plugin.json"
+          )
+
+          git -C $repoPath config user.name "github-actions[bot]"
+          git -C $repoPath config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C $repoPath checkout -B main
+
+          .\Elysia.LanDesktopConnect\scripts\Set-PluginVersion.ps1 -Version $version -RepositoryRoot $repoPath
+
+          $statusLines = @(git -C $repoPath status --porcelain -- $versionFiles)
+          if ($statusLines.Count -gt 0) {
+            git -C $repoPath add -- $versionFiles
+            git -C $repoPath commit -m "chore: prepare release $releaseTag"
+          }
+
+          git -C $repoPath push origin HEAD:refs/heads/main
+          $targetCommitish = (git -C $repoPath rev-parse HEAD).Trim()
+          "target_commitish=$targetCommitish" >> $env:GITHUB_OUTPUT
+
+      - name: Resolve build metadata
+        id: metadata
+        shell: pwsh
+        run: |
+          $manifest = Get-Content .\Elysia.LanDesktopConnect\plugin.json -Encoding UTF8 -Raw | ConvertFrom-Json
+          $version = $manifest.version.Trim()
+          $requestedVersion = "${{ steps.release_plan.outputs.version }}".Trim()
+          if ($version -ne $requestedVersion) {
+            throw "Plugin manifest version '$version' does not match requested release version '$requestedVersion'."
+          }
+
+          $assetName = "$($manifest.id).$version.laapp"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "release_tag=v$version" >> $env:GITHUB_OUTPUT
+          "asset_name=$assetName" >> $env:GITHUB_OUTPUT
+
+      - name: Build plugin package
+        shell: pwsh
+        run: dotnet build .\Elysia.LanDesktopConnect\Elysia.LanDesktopConnect.csproj -c Release -v minimal
+
+      - name: Create or update tag
+        shell: pwsh
+        run: |
+          $repoPath = (Resolve-Path ".\Elysia.LanDesktopConnect").Path
+          $releaseTag = "${{ steps.metadata.outputs.release_tag }}"
+          $targetCommitish = "${{ steps.release_source.outputs.target_commitish }}"
+          git -C $repoPath tag -f $releaseTag $targetCommitish
+          git -C $repoPath push origin refs/tags/$releaseTag --force
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.metadata.outputs.release_tag }}
+          target_commitish: ${{ steps.release_source.outputs.target_commitish }}
+          name: ${{ steps.metadata.outputs.release_tag }}
+          body: |
+            # Elysia.LanDesktopConnect ${{ steps.metadata.outputs.release_tag }}
+
+            ## 功能特性
+            - 基于 Elysia 的 IPC 网关
+            - 支持 Bun 运行时管理
+            - 双向通信：阑山桌面 ↔ 外部应用
+            - 能力注册与调用系统
+            - Fluent Avalonia 设置界面
+
+            ## 安装要求
+            - 需要安装 Bun 运行时
+            - 阑山桌面 API 版本 4.0.0+
+
+            ## 文件说明
+            - `${{ steps.metadata.outputs.asset_name }}`: 插件包文件
+          files: |
+            Elysia.LanDesktopConnect/${{ steps.metadata.outputs.asset_name }}
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          draft: false
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
