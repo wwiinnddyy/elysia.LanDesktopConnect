@@ -14,10 +14,27 @@
     <LanMountainPluginPackageOutputDirectory>$(MSBuildThisFileDirectory)</LanMountainPluginPackageOutputDirectory>
     <LanMountainPluginPackageFileName>$(AssemblyName).$(LanMountainPluginPackageVersion)$(LanMountainPluginPackageExtension)</LanMountainPluginPackageFileName>
     <LanMountainPluginPackagePath>$(LanMountainPluginPackageOutputDirectory)$(LanMountainPluginPackageFileName)</LanMountainPluginPackagePath>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.12" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.12" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" ExcludeAssets="runtime" />
+    <PackageReference Include="FluentAvaloniaUI" Version="2.5.0" ExcludeAssets="runtime" />
+    <PackageReference Include="FluentIcons.Avalonia" Version="2.0.319" ExcludeAssets="runtime" />
+    <PackageReference Include="FluentIcons.Avalonia.Fluent" Version="2.0.319" ExcludeAssets="runtime" />
     <PackageReference Include="LanMountainDesktop.PluginSdk" Version="4.0.0" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.9" ExcludeAssets="all" />
+    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="2.88.9" ExcludeAssets="all" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" ExcludeAssets="all" />
+    <PackageReference Include="SkiaSharp.NativeAssets.WebAssembly" Version="2.88.9" ExcludeAssets="all" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="8.3.1.1" ExcludeAssets="all" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.macOS" Version="8.3.1.1" ExcludeAssets="all" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="8.3.1.1" ExcludeAssets="all" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.WebAssembly" Version="8.3.1.1" ExcludeAssets="all" />
+    <PackageReference Include="Avalonia.Angle.Windows.Natives" Version="2.1.25547.20250602" ExcludeAssets="all" />
+    <PackageReference Include="Avalonia.Native" Version="11.3.12" ExcludeAssets="all" />
     <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Localization\*.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="elysia-gateway\**\*" CopyToOutputDirectory="PreserveNewest" />

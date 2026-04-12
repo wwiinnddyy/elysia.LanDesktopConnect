@@ -11,12 +11,12 @@ namespace Elysia.LanDesktopConnect.Settings;
 
 public class IpcBridgeSettingsViewModel : INotifyPropertyChanged
 {
-    private readonly IPluginSettingsService _settingsService;
+    private readonly ElysiaSettingsService _settingsService;
     private readonly BunProcessManager _bunManager;
     private readonly IPluginMessageBus _messageBus;
 
     public IpcBridgeSettingsViewModel(
-        IPluginSettingsService settingsService,
+        ElysiaSettingsService settingsService,
         BunProcessManager bunManager,
         IPluginMessageBus messageBus)
     {
@@ -273,21 +273,43 @@ public class IpcBridgeSettingsViewModel : INotifyPropertyChanged
 
     private void LoadSettings()
     {
-        IsAutoPort = _settingsService.GetValue("ipc.isAutoPort", true);
-        ManualPortNumber = _settingsService.GetValue("ipc.manualPort", 34567);
-        AutoRestart = _settingsService.GetValue("ipc.autoRestart", true);
-        SelectedLogLevel = _settingsService.GetValue("ipc.logLevel", "信息");
-        DebugMode = _settingsService.GetValue("ipc.debugMode", false);
+        var settings = _settingsService.GetSettings();
+        IsAutoPort = settings.IsAutoPort;
+        ManualPortNumber = settings.ManualPort;
+        AutoRestart = settings.AutoRestart;
+        SelectedLogLevel = MapLogLevelFromEnglish(settings.LogLevel);
+        DebugMode = settings.DebugMode;
     }
 
     private void SaveSettings()
     {
-        _settingsService.SetValue("ipc.isAutoPort", IsAutoPort);
-        _settingsService.SetValue("ipc.manualPort", ManualPortNumber);
-        _settingsService.SetValue("ipc.autoRestart", AutoRestart);
-        _settingsService.SetValue("ipc.logLevel", SelectedLogLevel);
-        _settingsService.SetValue("ipc.debugMode", DebugMode);
+        _settingsService.UpdateSettings(s =>
+        {
+            s.IsAutoPort = IsAutoPort;
+            s.ManualPort = ManualPortNumber;
+            s.AutoRestart = AutoRestart;
+            s.LogLevel = MapLogLevelToEnglish(SelectedLogLevel);
+            s.DebugMode = DebugMode;
+        });
     }
+
+    private static string MapLogLevelToEnglish(string chineseLevel) => chineseLevel switch
+    {
+        "调试" => "debug",
+        "信息" => "info",
+        "警告" => "warn",
+        "错误" => "error",
+        _ => "info"
+    };
+
+    private static string MapLogLevelFromEnglish(string englishLevel) => englishLevel?.ToLowerInvariant() switch
+    {
+        "debug" => "调试",
+        "info" => "信息",
+        "warn" => "警告",
+        "error" => "错误",
+        _ => "信息"
+    };
 
     private void OnBunStatusChanged(object? sender, BunStatus status)
     {

@@ -11,7 +11,7 @@ namespace Elysia.LanDesktopConnect.Services;
 
 public class BunProcessManager : INotifyPropertyChanged, IDisposable
 {
-    private readonly IPluginSettingsService _settingsService;
+    private readonly ElysiaSettingsService _settingsService;
     private readonly IPluginMessageBus _messageBus;
     private Process? _bunProcess;
     private CancellationTokenSource? _cts;
@@ -59,7 +59,7 @@ public class BunProcessManager : INotifyPropertyChanged, IDisposable
     public event PropertyChangedEventHandler? PropertyChanged;
     public event EventHandler<BunStatus>? StatusChanged;
 
-    public BunProcessManager(IPluginRuntimeContext runtimeContext, IPluginSettingsService settingsService, IPluginMessageBus messageBus)
+    public BunProcessManager(IPluginRuntimeContext runtimeContext, ElysiaSettingsService settingsService, IPluginMessageBus messageBus)
     {
         _settingsService = settingsService;
         _messageBus = messageBus;
@@ -71,7 +71,7 @@ public class BunProcessManager : INotifyPropertyChanged, IDisposable
     {
         if (!detectionResult.IsFound || string.IsNullOrEmpty(detectionResult.Path))
         {
-            UpdateStatus(BunStatus.BunNotInstalled);
+            UpdateStatus(BunStatus.NotInstalled);
             return false;
         }
 
@@ -101,8 +101,8 @@ public class BunProcessManager : INotifyPropertyChanged, IDisposable
 
         try
         {
-            var isAutoPort = _settingsService.GetValue("ipc.isAutoPort", true);
-            var port = isAutoPort ? 0 : _settingsService.GetValue("ipc.manualPort", 34567);
+            var isAutoPort = _settingsService.GetValue<bool>("ipc.isAutoPort", true);
+            var port = isAutoPort ? 0 : _settingsService.GetValue<int>("ipc.manualPort", 34567);
 
             var startInfo = new ProcessStartInfo
             {
@@ -118,7 +118,7 @@ public class BunProcessManager : INotifyPropertyChanged, IDisposable
             startInfo.Environment["LMD_PLUGIN_PIPE"] = GetPipeName();
             startInfo.Environment["LMD_PLUGIN_DATA_DIR"] = DataDirectory;
             startInfo.Environment["LMD_GATEWAY_PORT"] = port.ToString();
-            startInfo.Environment["LMD_LOG_LEVEL"] = _settingsService.GetValue("ipc.logLevel", "info");
+            startInfo.Environment["LMD_LOG_LEVEL"] = _settingsService.GetValue<string>("ipc.logLevel", "info");
 
             _bunProcess = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
 
@@ -187,7 +187,8 @@ public class BunProcessManager : INotifyPropertyChanged, IDisposable
             try
             {
                 _bunProcess.Kill(true);
-                await _bunProcess.WaitForExitAsync(TimeSpan.FromSeconds(5));
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await _bunProcess.WaitForExitAsync(cts.Token);
             }
             catch (Exception ex)
             {
@@ -212,7 +213,7 @@ public class BunProcessManager : INotifyPropertyChanged, IDisposable
         UpdateStatus(BunStatus.Error);
         GatewayPort = null;
 
-        var autoRestart = _settingsService.GetValue("ipc.autoRestart", true);
+        var autoRestart = _settingsService.GetValue<bool>("ipc.autoRestart", true);
 
         if (autoRestart && _restartCount < 5 && _cts?.IsCancellationRequested == false)
         {
@@ -326,7 +327,9 @@ public class BunProcessManager : INotifyPropertyChanged, IDisposable
 public enum BunStatus
 {
     NotStarted,
-    BunNotInstalled,
+    Checking,
+    Installed,
+    NotInstalled,
     Stopped,
     Starting,
     Running,
