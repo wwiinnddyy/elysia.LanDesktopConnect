@@ -30,12 +30,9 @@ public sealed class Plugin : PluginBase
         
         services.AddSingleton<IpcBridgeSettingsViewModel>();
         
-        services.AddPluginSettingsSection(
+        services.AddPluginSettingsSection<IpcBridgeSettingsPage>(
             id: "ipc-bridge",
             titleLocalizationKey: "settings.ipc_bridge.title",
-            configure: builder =>
-            {
-            },
             descriptionLocalizationKey: "settings.ipc_bridge.description",
             iconKey: "PlugConnected",
             sortOrder: 100);

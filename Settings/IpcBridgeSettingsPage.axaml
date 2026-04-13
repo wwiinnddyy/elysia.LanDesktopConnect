@@ -9,6 +9,11 @@
   <ScrollViewer VerticalScrollBarVisibility="Auto">
     <StackPanel Classes="settings-page-container" Spacing="12">
 
+      <!-- 介绍文本 -->
+      <TextBlock Text="配置 Elysia IPC 网关，管理 Bun 运行时和外部应用连接。"
+                 Opacity="0.7"
+                 TextWrapping="Wrap" />
+
       <!-- Bun 运行时状态 -->
       <ui:SettingsExpander Header="Bun 运行时"
                            Description="{Binding BunStatusDescription}"
