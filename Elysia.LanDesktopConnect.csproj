@@ -37,6 +37,7 @@
     <PackageReference Include="Avalonia.Native" Version="11.3.12" ExcludeAssets="all" />
     <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Localization\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="assets\**\*" CopyToOutputDirectory="PreserveNewest" />
     <None Include="elysia-gateway\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

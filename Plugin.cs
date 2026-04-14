@@ -19,22 +19,18 @@ public sealed class Plugin : PluginBase
         });
 
         services.AddSingleton<BunDetector>();
-        
+
         services.AddSingleton<BunProcessManager>();
-        
+
         services.AddHostedService<ElysiaGatewayHostedService>();
-        
+
         services.AddSingleton<NamedPipeClient>();
-        
+
         services.AddSingleton<IpcMessageRouter>();
-        
+
         services.AddSingleton<IpcBridgeSettingsViewModel>();
-        
-        services.AddPluginSettingsSection<IpcBridgeSettingsPage>(
-            id: "ipc-bridge",
-            titleLocalizationKey: "settings.ipc_bridge.title",
-            descriptionLocalizationKey: "settings.ipc_bridge.description",
-            iconKey: "PlugConnected",
-            sortOrder: 100);
+
+        // 注册设置页面 - 使用 [SettingsPageInfo] 特性自动注册
+        services.AddSingleton<IpcBridgeSettingsPage>();
     }
 }
