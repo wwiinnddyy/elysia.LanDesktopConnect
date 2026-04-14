@@ -4,7 +4,7 @@
   "description": "基于 Elysia 的 IPC 网关插件，实现阑山桌面与外部应用的双向通信",
   "author": "Elysia",
   "version": "0.0.2",
-  "apiVersion": "4.0.0",
+  "apiVersion": "4.0.2",
   "entranceAssembly": "Elysia.LanDesktopConnect.dll",
   "sharedContracts": [],
   "icon": "assets/icon.png"
