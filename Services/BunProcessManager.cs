@@ -1,292 +1,460 @@
-using System;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 using LanMountainDesktop.PluginSdk;
 
 namespace Elysia.LanDesktopConnect.Services;
 
-public class BunProcessManager : INotifyPropertyChanged, IDisposable
+public sealed partial class BunProcessManager : INotifyPropertyChanged, IDisposable
 {
     private readonly ElysiaSettingsService _settingsService;
     private readonly IPluginMessageBus _messageBus;
+    private readonly GatewayIpcServer _ipcServer;
+    private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
+    private readonly object _logLock = new();
+    private readonly string _gatewayDirectory;
+
     private Process? _bunProcess;
-    private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _processCts;
     private int _restartCount;
-    private readonly object _lock = new();
+    private bool _stopping;
+    private bool _disposed;
 
     private BunStatus _status = BunStatus.NotStarted;
     private string? _bunPath;
     private string? _bunVersion;
     private int? _gatewayPort;
-    private DateTime? _startTime;
+    private DateTimeOffset? _startTime;
+
+    public BunProcessManager(
+        IPluginRuntimeContext runtimeContext,
+        ElysiaSettingsService settingsService,
+        IPluginMessageBus messageBus,
+        GatewayIpcServer ipcServer)
+    {
+        ArgumentNullException.ThrowIfNull(runtimeContext);
+
+        _settingsService = settingsService;
+        _messageBus = messageBus;
+        _ipcServer = ipcServer;
+        DataDirectory = runtimeContext.DataDirectory;
+        _gatewayDirectory = Path.Combine(runtimeContext.PluginDirectory, "elysia-gateway");
+        Directory.CreateDirectory(DataDirectory);
+    }
 
     public BunStatus Status
     {
         get => _status;
-        private set { _status = value; OnPropertyChanged(); }
+        private set => SetField(ref _status, value);
     }
 
     public string? BunPath
     {
         get => _bunPath;
-        private set { _bunPath = value; OnPropertyChanged(); }
+        private set => SetField(ref _bunPath, value);
     }
 
     public string? BunVersion
     {
         get => _bunVersion;
-        private set { _bunVersion = value; OnPropertyChanged(); }
+        private set => SetField(ref _bunVersion, value);
     }
 
     public int? GatewayPort
     {
         get => _gatewayPort;
-        private set { _gatewayPort = value; OnPropertyChanged(); }
+        private set => SetField(ref _gatewayPort, value);
     }
 
-    public DateTime? StartTime
+    public DateTimeOffset? StartTime
     {
         get => _startTime;
-        private set { _startTime = value; OnPropertyChanged(); }
+        private set => SetField(ref _startTime, value);
     }
 
     public string DataDirectory { get; }
 
+    public bool IsTransportConnected => _ipcServer.IsConnected;
+
     public event PropertyChangedEventHandler? PropertyChanged;
+
     public event EventHandler<BunStatus>? StatusChanged;
 
-    public BunProcessManager(IPluginRuntimeContext runtimeContext, ElysiaSettingsService settingsService, IPluginMessageBus messageBus)
+    public Task<bool> InitializeAsync(BunDetectionResult detectionResult)
     {
-        _settingsService = settingsService;
-        _messageBus = messageBus;
-        DataDirectory = runtimeContext.DataDirectory;
-        Directory.CreateDirectory(DataDirectory);
-    }
+        ArgumentNullException.ThrowIfNull(detectionResult);
 
-    public async Task<bool> InitializeAsync(BunDetectionResult detectionResult)
-    {
-        if (!detectionResult.IsFound || string.IsNullOrEmpty(detectionResult.Path))
+        if (!detectionResult.IsFound || string.IsNullOrWhiteSpace(detectionResult.Path))
         {
+            BunPath = null;
+            BunVersion = null;
             UpdateStatus(BunStatus.NotInstalled);
-            return false;
+            return Task.FromResult(false);
         }
 
         BunPath = detectionResult.Path;
         BunVersion = detectionResult.Version;
-        UpdateStatus(BunStatus.Stopped);
-        return true;
-    }
-
-    public async Task StartAsync()
-    {
-        if (string.IsNullOrEmpty(BunPath))
+        if (Status is BunStatus.NotStarted or BunStatus.NotInstalled or BunStatus.Checking)
         {
-            throw new InvalidOperationException("Bun path is not set. Call InitializeAsync first.");
+            UpdateStatus(BunStatus.Stopped);
         }
 
-        lock (_lock)
+        return Task.FromResult(true);
+    }
+
+    public async Task StartAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        await _lifecycleLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            if (Status == BunStatus.Running || Status == BunStatus.Starting)
+            if (Status is BunStatus.Running or BunStatus.Starting)
             {
                 return;
             }
-        }
 
-        _cts = new CancellationTokenSource();
-        UpdateStatus(BunStatus.Starting);
+            if (string.IsNullOrWhiteSpace(BunPath))
+            {
+                throw new InvalidOperationException("Bun is not initialized. Detect Bun before starting the Elysia gateway.");
+            }
+
+            if (Status is BunStatus.Stopped or BunStatus.NotStarted or BunStatus.NotInstalled)
+            {
+                _restartCount = 0;
+            }
+
+            _stopping = false;
+            _processCts?.Dispose();
+            _processCts = new CancellationTokenSource();
+            using var startupCts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                _processCts.Token);
+
+            UpdateStatus(BunStatus.Starting);
+            GatewayPort = null;
+
+            try
+            {
+                EnsureGatewayFilesExist();
+                await _ipcServer.StartAsync(startupCts.Token).ConfigureAwait(false);
+                await EnsureGatewayDependenciesAsync(startupCts.Token).ConfigureAwait(false);
+
+                var isAutoPort = _settingsService.GetValue("ipc.isAutoPort", true);
+                var port = isAutoPort
+                    ? 0
+                    : _settingsService.GetValue("ipc.manualPort", 34567);
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = BunPath,
+                    Arguments = "run src/index.ts",
+                    WorkingDirectory = _gatewayDirectory,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                startInfo.Environment["LMD_PLUGIN_PIPE"] = _ipcServer.Endpoint;
+                startInfo.Environment["LMD_PLUGIN_DATA_DIR"] = DataDirectory;
+                startInfo.Environment["LMD_GATEWAY_PORT"] = port.ToString();
+                startInfo.Environment["LMD_GATEWAY_HOST"] = "127.0.0.1";
+                startInfo.Environment["LMD_LOG_LEVEL"] = _settingsService.GetValue("ipc.logLevel", "info");
+
+                var process = new Process
+                {
+                    StartInfo = startInfo,
+                    EnableRaisingEvents = true
+                };
+                process.OutputDataReceived += OnProcessOutput;
+                process.ErrorDataReceived += OnProcessError;
+                process.Exited += OnProcessExited;
+
+                if (!process.Start())
+                {
+                    process.Dispose();
+                    throw new InvalidOperationException("Bun did not start the Elysia gateway process.");
+                }
+
+                _bunProcess = process;
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+                StartTime = DateTimeOffset.Now;
+
+                await WaitForStartupAsync(process, startupCts.Token).ConfigureAwait(false);
+                UpdateStatus(BunStatus.Running);
+                LogInfo($"Elysia gateway started on 127.0.0.1:{GatewayPort}.");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to start Elysia gateway: {ex.Message}");
+                await StopProcessCoreAsync(stopTransport: true).ConfigureAwait(false);
+                UpdateStatus(BunStatus.Error);
+                throw;
+            }
+        }
+        finally
+        {
+            _lifecycleLock.Release();
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        await _lifecycleLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _stopping = true;
+            await StopProcessCoreAsync(stopTransport: true).ConfigureAwait(false);
+            GatewayPort = null;
+            StartTime = null;
+            UpdateStatus(BunPath is null ? BunStatus.NotInstalled : BunStatus.Stopped);
+        }
+        finally
+        {
+            _stopping = false;
+            _lifecycleLock.Release();
+        }
+    }
+
+    public async Task RestartAsync(CancellationToken cancellationToken = default)
+    {
+        await StopAsync(cancellationToken).ConfigureAwait(false);
+        await Task.Delay(350, cancellationToken).ConfigureAwait(false);
+        await StartAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task EnsureGatewayDependenciesAsync(CancellationToken cancellationToken)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = BunPath!,
+            Arguments = "install --frozen-lockfile --production",
+            WorkingDirectory = _gatewayDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = new Process { StartInfo = startInfo };
+        process.Start();
+
+        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(90));
 
         try
         {
-            var isAutoPort = _settingsService.GetValue<bool>("ipc.isAutoPort", true);
-            var port = isAutoPort ? 0 : _settingsService.GetValue<int>("ipc.manualPort", 34567);
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = BunPath,
-                Arguments = "run src/index.ts",
-                WorkingDirectory = GetElysiaGatewayDirectory(),
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-
-            startInfo.Environment["LMD_PLUGIN_PIPE"] = GetPipeName();
-            startInfo.Environment["LMD_PLUGIN_DATA_DIR"] = DataDirectory;
-            startInfo.Environment["LMD_GATEWAY_PORT"] = port.ToString();
-            startInfo.Environment["LMD_LOG_LEVEL"] = _settingsService.GetValue<string>("ipc.logLevel", "info");
-
-            _bunProcess = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-
-            _bunProcess.OutputDataReceived += (s, e) =>
-            {
-                if (!string.IsNullOrEmpty(e.Data))
-                {
-                    LogInfo($"[Elysia] {e.Data}");
-                    ParsePortFromOutput(e.Data);
-                }
-            };
-
-            _bunProcess.ErrorDataReceived += (s, e) =>
-            {
-                if (!string.IsNullOrEmpty(e.Data))
-                {
-                    LogError($"[Elysia Error] {e.Data}");
-                }
-            };
-
-            _bunProcess.Exited += async (s, e) =>
-            {
-                LogInfo($"Elysia process exited with code {_bunProcess.ExitCode}");
-
-                if (_cts?.IsCancellationRequested == false)
-                {
-                    await HandleProcessExitAsync();
-                }
-            };
-
-            _bunProcess.Start();
-            _bunProcess.BeginOutputReadLine();
-            _bunProcess.BeginErrorReadLine();
-
-            StartTime = DateTime.Now;
-
-            await WaitForStartupAsync(_cts.Token);
-
-            UpdateStatus(BunStatus.Running);
-            _restartCount = 0;
-
-            LogInfo($"Elysia gateway started on port {GatewayPort}");
+            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch
         {
-            LogError($"Failed to start Elysia: {ex.Message}");
-            UpdateStatus(BunStatus.Error);
+            TryKillProcess(process);
             throw;
         }
-    }
 
-    public async Task StopAsync()
-    {
-        lock (_lock)
+        var output = await outputTask.ConfigureAwait(false);
+        var error = await errorTask.ConfigureAwait(false);
+        if (process.ExitCode != 0)
         {
-            if (Status != BunStatus.Running && Status != BunStatus.Starting)
-            {
-                return;
-            }
+            throw new InvalidOperationException(
+                $"Bun failed to restore Elysia gateway dependencies (exit {process.ExitCode}): {error.Trim()}");
         }
 
-        _cts?.Cancel();
-
-        if (_bunProcess != null && !_bunProcess.HasExited)
+        if (_settingsService.GetValue("ipc.debugMode", false) && !string.IsNullOrWhiteSpace(output))
         {
-            try
-            {
-                _bunProcess.Kill(true);
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                await _bunProcess.WaitForExitAsync(cts.Token);
-            }
-            catch (Exception ex)
-            {
-                LogError($"Error stopping Elysia: {ex.Message}");
-            }
-        }
-
-        UpdateStatus(BunStatus.Stopped);
-        GatewayPort = null;
-        StartTime = null;
-    }
-
-    public async Task RestartAsync()
-    {
-        await StopAsync();
-        await Task.Delay(500);
-        await StartAsync();
-    }
-
-    private async Task HandleProcessExitAsync()
-    {
-        UpdateStatus(BunStatus.Error);
-        GatewayPort = null;
-
-        var autoRestart = _settingsService.GetValue<bool>("ipc.autoRestart", true);
-
-        if (autoRestart && _restartCount < 5 && _cts?.IsCancellationRequested == false)
-        {
-            _restartCount++;
-            var delay = TimeSpan.FromSeconds(Math.Min(_restartCount * 2, 30));
-
-            LogInfo($"Auto-restarting in {delay.TotalSeconds} seconds... (attempt {_restartCount}/5)");
-
-            await Task.Delay(delay);
-
-            try
-            {
-                await StartAsync();
-            }
-            catch (Exception ex)
-            {
-                LogError($"Auto-restart failed: {ex.Message}");
-            }
+            LogInfo($"Bun dependency restore: {output.Trim()}");
         }
     }
 
-    private async Task WaitForStartupAsync(CancellationToken ct)
+    private void EnsureGatewayFilesExist()
     {
-        var timeout = TimeSpan.FromSeconds(10);
-        var sw = Stopwatch.StartNew();
-
-        while (sw.Elapsed < timeout)
+        var requiredFiles = new[]
         {
+            Path.Combine(_gatewayDirectory, "package.json"),
+            Path.Combine(_gatewayDirectory, "bun.lock"),
+            Path.Combine(_gatewayDirectory, "src", "index.ts")
+        };
+
+        var missingFile = requiredFiles.FirstOrDefault(path => !File.Exists(path));
+        if (missingFile is not null)
+        {
+            throw new FileNotFoundException("The packaged Elysia gateway is incomplete.", missingFile);
+        }
+    }
+
+    private async Task WaitForStartupAsync(Process process, CancellationToken cancellationToken)
+    {
+        var timeoutAt = DateTimeOffset.UtcNow.AddSeconds(20);
+        while (DateTimeOffset.UtcNow < timeoutAt)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (process.HasExited)
+            {
+                throw new InvalidOperationException($"Elysia gateway exited during startup with code {process.ExitCode}.");
+            }
+
             if (GatewayPort.HasValue)
             {
                 return;
             }
 
-            await Task.Delay(100, ct);
+            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
         }
 
-        throw new TimeoutException("Elysia gateway failed to start within 10 seconds");
+        throw new TimeoutException("Elysia gateway did not report a listening port within 20 seconds.");
     }
 
-    private void ParsePortFromOutput(string line)
+    private void OnProcessOutput(object sender, DataReceivedEventArgs e)
     {
-        if (line.Contains("port") || line.Contains("Port"))
+        if (string.IsNullOrWhiteSpace(e.Data))
         {
-            var parts = line.Split(' ');
-            for (int i = 0; i < parts.Length - 1; i++)
+            return;
+        }
+
+        LogInfo($"[Elysia] {e.Data}");
+        var match = GatewayPortRegex().Match(e.Data);
+        if (match.Success && int.TryParse(match.Groups["port"].Value, out var port))
+        {
+            GatewayPort = port;
+        }
+    }
+
+    private void OnProcessError(object sender, DataReceivedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(e.Data))
+        {
+            LogError($"[Elysia] {e.Data}");
+        }
+    }
+
+    private void OnProcessExited(object? sender, EventArgs e)
+    {
+        if (sender is Process process)
+        {
+            _ = HandleUnexpectedExitAsync(process);
+        }
+    }
+
+    private async Task HandleUnexpectedExitAsync(Process process)
+    {
+        var shouldRestart = false;
+        var restartDelay = TimeSpan.Zero;
+
+        await _lifecycleLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_stopping || !ReferenceEquals(_bunProcess, process))
             {
-                if (int.TryParse(parts[i + 1], out var port) && port > 0)
-                {
-                    GatewayPort = port;
-                    break;
-                }
+                return;
+            }
+
+            var exitCode = TryGetExitCode(process);
+            LogError($"Elysia gateway exited unexpectedly with code {exitCode}.");
+
+            if (StartTime is { } startTime && DateTimeOffset.Now - startTime >= TimeSpan.FromMinutes(5))
+            {
+                _restartCount = 0;
+            }
+
+            await StopProcessCoreAsync(stopTransport: true).ConfigureAwait(false);
+            GatewayPort = null;
+            StartTime = null;
+            UpdateStatus(BunStatus.Error);
+
+            if (_settingsService.GetValue("ipc.autoRestart", true) && _restartCount < 5)
+            {
+                _restartCount++;
+                restartDelay = TimeSpan.FromSeconds(Math.Min(_restartCount * 2, 30));
+                shouldRestart = true;
+                LogInfo($"Restarting Elysia gateway in {restartDelay.TotalSeconds:0} seconds (attempt {_restartCount}/5).");
             }
         }
-    }
-
-    private string GetElysiaGatewayDirectory()
-    {
-        var pluginDir = Path.GetDirectoryName(GetType().Assembly.Location)!;
-        return Path.Combine(pluginDir, "elysia-gateway");
-    }
-
-    private string GetPipeName()
-    {
-        var userName = Environment.UserName;
-        var pipeId = $"LMD_Elysia_{userName}".GetHashCode().ToString("X8");
-
-        if (OperatingSystem.IsWindows())
+        finally
         {
-            return $"\\\\.\\pipe\\{pipeId}";
+            _lifecycleLock.Release();
         }
-        else
+
+        if (!shouldRestart)
         {
-            return Path.Combine(Path.GetTempPath(), $"lmd-elysia-{pipeId}.sock");
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(restartDelay).ConfigureAwait(false);
+            await StartAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            LogError($"Automatic gateway restart failed: {ex.Message}");
+        }
+    }
+
+    private async Task StopProcessCoreAsync(bool stopTransport)
+    {
+        _processCts?.Cancel();
+
+        var process = _bunProcess;
+        _bunProcess = null;
+        if (process is not null)
+        {
+            process.OutputDataReceived -= OnProcessOutput;
+            process.ErrorDataReceived -= OnProcessError;
+            process.Exited -= OnProcessExited;
+
+            if (!process.HasExited)
+            {
+                TryKillProcess(process);
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                try
+                {
+                    await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
+            process.Dispose();
+        }
+
+        _processCts?.Dispose();
+        _processCts = null;
+
+        if (stopTransport)
+        {
+            await _ipcServer.StopAsync().ConfigureAwait(false);
+        }
+    }
+
+    private static void TryKillProcess(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static int TryGetExitCode(Process process)
+    {
+        try
+        {
+            return process.ExitCode;
+        }
+        catch
+        {
+            return -1;
         }
     }
 
@@ -297,31 +465,52 @@ public class BunProcessManager : INotifyPropertyChanged, IDisposable
         _messageBus.Publish(new BunStatusChangedEvent(status));
     }
 
-    private void LogInfo(string message)
+    private void LogInfo(string message) => AppendLog("INFO", message);
+
+    private void LogError(string message) => AppendLog("ERROR", message);
+
+    private void AppendLog(string level, string message)
     {
-        var logFile = Path.Combine(DataDirectory, "elysia-gateway.log");
-        var logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [INFO] {message}{Environment.NewLine}";
-        File.AppendAllText(logFile, logEntry);
+        try
+        {
+            var logFile = Path.Combine(DataDirectory, "elysia-gateway.log");
+            var logEntry = $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}] [{level}] {message}{Environment.NewLine}";
+            lock (_logLock)
+            {
+                File.AppendAllText(logFile, logEntry);
+            }
+        }
+        catch
+        {
+        }
     }
 
-    private void LogError(string message)
+    private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
-        var logFile = Path.Combine(DataDirectory, "elysia-gateway.log");
-        var logEntry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [ERROR] {message}{Environment.NewLine}";
-        File.AppendAllText(logFile, logEntry);
-    }
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return false;
+        }
 
-    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-    {
+        field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        return true;
     }
 
     public void Dispose()
     {
-        _ = StopAsync();
-        _bunProcess?.Dispose();
-        _cts?.Dispose();
+        if (_disposed)
+        {
+            return;
+        }
+
+        StopAsync().GetAwaiter().GetResult();
+        _lifecycleLock.Dispose();
+        _disposed = true;
     }
+
+    [GeneratedRegex(@"running\s+on\s+port\s+(?<port>\d+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex GatewayPortRegex();
 }
 
 public enum BunStatus
@@ -336,4 +525,4 @@ public enum BunStatus
     Error
 }
 
-public record BunStatusChangedEvent(BunStatus Status);
+public sealed record BunStatusChangedEvent(BunStatus Status);

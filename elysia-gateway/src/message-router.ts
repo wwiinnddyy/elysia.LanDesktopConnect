@@ -1,239 +1,182 @@
-import type { ServerWebSocket } from 'bun';
 import type { PluginPipeClient, IpcMessage } from './pipe-client';
-import type { ExternalAppManager } from './app-manager';
+import type { ExternalAppManager, GatewayWebSocket } from './app-manager';
 import type { CapabilityRegistry } from './capability-registry';
+
+type JsonRecord = Record<string, any>;
 
 export class MessageRouter {
   constructor(
-    private pipeClient: PluginPipeClient,
-    private appManager: ExternalAppManager,
-    private capabilityRegistry: CapabilityRegistry
+    private readonly pipeClient: PluginPipeClient,
+    private readonly appManager: ExternalAppManager,
+    private readonly capabilityRegistry: CapabilityRegistry,
   ) {}
 
-  // 处理来自外部应用的消息
-  async handleExternalMessage(ws: ServerWebSocket<any>, message: IpcMessage): Promise<void> {
-    const { type, sender, target, payload } = message;
-
-    switch (type) {
+  async handleExternalMessage(ws: GatewayWebSocket, message: IpcMessage): Promise<void> {
+    switch (message.type) {
       case 'register':
         await this.handleAppRegister(ws, message);
         break;
-
       case 'unregister':
         await this.handleAppUnregister(ws, message);
         break;
-
       case 'capability:register':
         await this.handleCapabilityRegister(ws, message);
         break;
-
       case 'capability:call':
         await this.handleCapabilityCall(ws, message);
         break;
-
       case 'data:update':
         await this.handleDataUpdate(ws, message);
         break;
-
       case 'event:emit':
         await this.handleEventEmit(ws, message);
         break;
-
       case 'ping':
-        ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+        ws.send(JSON.stringify(this.createMessage('pong', 'elysia-gateway')));
         break;
-
       default:
-        // 未知消息类型，转发到 C# 插件
         await this.forwardToHost(message);
+        break;
     }
   }
 
-  // 处理来自 C# 插件的消息
   async handleHostMessage(message: IpcMessage): Promise<void> {
-    const { type, target, payload } = message;
-
-    switch (type) {
+    switch (message.type) {
       case 'host:capability:register':
-        // 阑山桌面注册能力
-        this.capabilityRegistry.registerHostCapability(payload);
+        this.capabilityRegistry.registerHostCapability(this.asRecord(message.payload) as any);
         break;
-
       case 'host:capability:response':
-        // 阑山桌面能力调用响应
-        await this.forwardCapabilityResponse(message);
+        this.forwardCapabilityResponse(message);
         break;
-
       case 'host:broadcast':
-        // 阑山桌面广播消息到所有外部应用
-        this.appManager.broadcastToApps(message);
+        this.appManager.broadcastToApps(this.createExternalEnvelope(message));
         break;
-
       case 'host:send':
-        // 阑山桌面发送消息到特定应用
-        if (target) {
-          this.appManager.sendToApp(target, message);
+        if (message.target) {
+          this.appManager.sendToApp(message.target, this.createExternalEnvelope(message));
         }
         break;
-
       default:
-        console.log(`[MessageRouter] Unknown host message type: ${type}`);
+        console.log(`[MessageRouter] Unknown host message type: ${message.type}`);
+        break;
     }
   }
 
-  // 应用注册
-  private async handleAppRegister(ws: ServerWebSocket<any>, message: IpcMessage): Promise<void> {
-    const { payload } = message;
+  async handleExternalDisconnect(ws: GatewayWebSocket): Promise<void> {
+    const app = this.appManager.getAppByWs(ws);
+    if (!app) return;
+
+    this.capabilityRegistry.removeExternalCapabilities(app.id);
+    await this.forwardToHost(this.createMessage('app:disconnected', app.id, {
+      id: app.id,
+      name: app.name,
+      type: app.type,
+    }));
+    this.appManager.removeApp(ws);
+  }
+
+  private async handleAppRegister(ws: GatewayWebSocket, message: IpcMessage): Promise<void> {
+    const payload = this.asRecord(message.payload);
     const app = {
-      id: payload.id || `app-${Date.now()}`,
-      name: payload.name || 'Unknown App',
-      type: payload.type || 'unknown',
-      capabilities: payload.capabilities || [],
+      id: this.asNonEmptyString(payload.id) ?? `app-${crypto.randomUUID()}`,
+      name: this.asNonEmptyString(payload.name) ?? 'Unknown App',
+      type: this.asNonEmptyString(payload.type) ?? 'unknown',
+      capabilities: Array.isArray(payload.capabilities)
+        ? payload.capabilities.filter((item): item is string => typeof item === 'string')
+        : [],
       ws,
       connectedAt: Date.now(),
     };
 
     this.appManager.registerApp(app);
-
-    // 通知 C# 插件
-    await this.forwardToHost({
-      ...message,
-      sender: app.id,
-    });
-
-    // 发送注册成功响应
-    ws.send(JSON.stringify({
-      type: 'register:success',
-      appId: app.id,
-      timestamp: Date.now(),
-    }));
+    await this.forwardToHost({ ...message, sender: app.id, payload });
+    ws.send(JSON.stringify(this.createMessage('register:success', 'elysia-gateway', { appId: app.id })));
   }
 
-  // 应用注销
-  private async handleAppUnregister(ws: ServerWebSocket<any>, message: IpcMessage): Promise<void> {
-    const app = this.appManager.getAppByWs(ws);
-    if (app) {
-      // 移除该应用的所有能力
-      this.capabilityRegistry.removeExternalCapabilities(app.id);
-      
-      // 通知 C# 插件
-      await this.forwardToHost({
-        ...message,
-        sender: app.id,
-      });
-    }
-  }
-
-  // 注册能力
-  private async handleCapabilityRegister(ws: ServerWebSocket<any>, message: IpcMessage): Promise<void> {
+  private async handleAppUnregister(ws: GatewayWebSocket, message: IpcMessage): Promise<void> {
     const app = this.appManager.getAppByWs(ws);
     if (!app) return;
 
-    const { payload } = message;
+    this.capabilityRegistry.removeExternalCapabilities(app.id);
+    await this.forwardToHost({ ...message, sender: app.id });
+    this.appManager.removeApp(ws);
+  }
+
+  private async handleCapabilityRegister(ws: GatewayWebSocket, message: IpcMessage): Promise<void> {
+    const app = this.appManager.getAppByWs(ws);
+    if (!app) return;
+
+    const payload = this.asRecord(message.payload);
+    const capabilityId = this.asNonEmptyString(payload.id);
+    if (!capabilityId) {
+      this.sendError(ws, 'capability:error', 'Capability id is required');
+      return;
+    }
+
     this.capabilityRegistry.registerExternalCapability({
-      id: payload.id,
-      name: payload.name,
-      description: payload.description,
+      id: capabilityId,
+      name: this.asNonEmptyString(payload.name) ?? capabilityId,
+      description: this.asNonEmptyString(payload.description) ?? '',
       parameters: payload.parameters,
       returns: payload.returns,
       appId: app.id,
     });
 
-    // 通知 C# 插件有新能力可用
-    await this.forwardToHost({
-      type: 'capability:available',
-      sender: app.id,
-      payload: {
-        appId: app.id,
-        appName: app.name,
-        capability: payload,
-      },
-    });
+    await this.forwardToHost(this.createMessage('capability:available', app.id, {
+      appId: app.id,
+      appName: app.name,
+      capability: payload,
+    }));
   }
 
-  // 调用能力
-  private async handleCapabilityCall(ws: ServerWebSocket<any>, message: IpcMessage): Promise<void> {
-    const { target, payload } = message;
-    
-    if (!target) {
-      ws.send(JSON.stringify({
-        type: 'capability:error',
-        error: 'Target not specified',
-      }));
+  private async handleCapabilityCall(ws: GatewayWebSocket, message: IpcMessage): Promise<void> {
+    const payload = this.asRecord(message.payload);
+    const capabilityId = this.asNonEmptyString(payload.capabilityId);
+    if (!message.target || !capabilityId) {
+      this.sendError(ws, 'capability:error', 'Target and capabilityId are required');
       return;
     }
 
-    // 检查是否是调用阑山桌面的能力
-    const hostCapability = this.capabilityRegistry.getHostCapability(payload.capabilityId);
-    if (hostCapability) {
-      // 转发到 C# 插件
-      await this.forwardToHost({
-        ...message,
-        sender: this.appManager.getAppByWs(ws)?.id,
-      });
+    if (this.capabilityRegistry.getHostCapability(capabilityId)) {
+      const sender = this.appManager.getAppByWs(ws)?.id ?? message.sender;
+      await this.forwardToHost({ ...message, sender });
       return;
     }
 
-    // 检查是否是调用其他外部应用的能力
-    const [targetAppId, capabilityId] = target.split(':');
-    const externalCapability = this.capabilityRegistry.getExternalCapability(targetAppId, capabilityId);
-    
-    if (externalCapability) {
-      // 转发到目标应用
+    const [targetAppId, targetCapabilityId] = message.target.split(':', 2);
+    if (targetAppId && targetCapabilityId &&
+        this.capabilityRegistry.getExternalCapability(targetAppId, targetCapabilityId)) {
       this.appManager.sendToApp(targetAppId, message);
       return;
     }
 
-    // 能力未找到
-    ws.send(JSON.stringify({
-      type: 'capability:error',
-      error: `Capability not found: ${payload.capabilityId}`,
-    }));
+    this.sendError(ws, 'capability:error', `Capability not found: ${capabilityId}`);
   }
 
-  // 数据更新
-  private async handleDataUpdate(ws: ServerWebSocket<any>, message: IpcMessage): Promise<void> {
+  private async handleDataUpdate(ws: GatewayWebSocket, message: IpcMessage): Promise<void> {
     const app = this.appManager.getAppByWs(ws);
     if (!app) return;
 
-    // 转发到 C# 插件
-    await this.forwardToHost({
-      ...message,
-      sender: app.id,
-    });
-
-    // 广播给其他订阅的应用
-    const { payload } = message;
-    if (payload.broadcast) {
-      this.appManager.broadcastToApps(message, app.id);
+    const forwarded = { ...message, sender: app.id };
+    await this.forwardToHost(forwarded);
+    if (this.asRecord(message.payload).broadcast === true) {
+      this.appManager.broadcastToApps(forwarded, app.id);
     }
   }
 
-  // 事件发射
-  private async handleEventEmit(ws: ServerWebSocket<any>, message: IpcMessage): Promise<void> {
+  private async handleEventEmit(ws: GatewayWebSocket, message: IpcMessage): Promise<void> {
     const app = this.appManager.getAppByWs(ws);
     if (!app) return;
 
-    // 转发到 C# 插件
-    await this.forwardToHost({
-      ...message,
-      sender: app.id,
-    });
-
-    // 广播给所有应用
-    this.appManager.broadcastToApps(message, app.id);
+    const forwarded = { ...message, sender: app.id };
+    await this.forwardToHost(forwarded);
+    this.appManager.broadcastToApps(forwarded, app.id);
   }
 
-  // 转发能力调用响应
-  private async forwardCapabilityResponse(message: IpcMessage): Promise<void> {
-    const { target } = message;
-    if (!target) return;
-
-    // 转发到目标应用
-    this.appManager.sendToApp(target, message);
+  private forwardCapabilityResponse(message: IpcMessage): void {
+    if (message.target) this.appManager.sendToApp(message.target, message);
   }
 
-  // 转发消息到 C# 插件
   private async forwardToHost(message: IpcMessage): Promise<void> {
     if (!this.pipeClient.getIsConnected()) {
       console.error('[MessageRouter] Not connected to host plugin');
@@ -242,8 +185,47 @@ export class MessageRouter {
 
     try {
       await this.pipeClient.send(message);
-    } catch (err) {
-      console.error('[MessageRouter] Failed to forward to host:', err);
+    } catch (error) {
+      console.error('[MessageRouter] Failed to forward to host:', error);
     }
+  }
+
+  private createExternalEnvelope(message: IpcMessage): IpcMessage {
+    const payload = this.asRecord(message.payload);
+    const type = this.asNonEmptyString(payload.type);
+    if (!type) return message;
+
+    return {
+      id: message.id,
+      timestamp: message.timestamp,
+      type,
+      sender: message.sender,
+      target: message.target,
+      payload: payload.payload,
+    };
+  }
+
+  private sendError(ws: GatewayWebSocket, type: string, error: string): void {
+    ws.send(JSON.stringify(this.createMessage(type, 'elysia-gateway', { error })));
+  }
+
+  private createMessage(type: string, sender: string, payload?: unknown): IpcMessage {
+    return {
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      type,
+      sender,
+      payload,
+    };
+  }
+
+  private asRecord(value: unknown): JsonRecord {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value as JsonRecord
+      : {};
+  }
+
+  private asNonEmptyString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
   }
 }

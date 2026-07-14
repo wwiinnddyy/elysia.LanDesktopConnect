@@ -4,7 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.0.2</Version>
+    <Version>0.1.0</Version>
+    <AssemblyName>Elysia.LanDesktopConnect</AssemblyName>
+    <RootNamespace>Elysia.LanDesktopConnect</RootNamespace>
+    <OutputType>Library</OutputType>
+    <GenerateDependencyFile>true</GenerateDependencyFile>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <OutputPath>bin\$(Configuration)\$(TargetFramework)\content\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
@@ -15,30 +20,28 @@
     <LanMountainPluginPackageFileName>$(AssemblyName).$(LanMountainPluginPackageVersion)$(LanMountainPluginPackageExtension)</LanMountainPluginPackageFileName>
     <LanMountainPluginPackagePath>$(LanMountainPluginPackageOutputDirectory)$(LanMountainPluginPackageFileName)</LanMountainPluginPackagePath>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.12" ExcludeAssets="runtime" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.3.12" ExcludeAssets="runtime" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" ExcludeAssets="runtime" />
-    <PackageReference Include="FluentAvaloniaUI" Version="2.5.0" ExcludeAssets="runtime" />
-    <PackageReference Include="FluentIcons.Avalonia" Version="2.0.319" ExcludeAssets="runtime" />
-    <PackageReference Include="FluentIcons.Avalonia.Fluent" Version="2.0.319" ExcludeAssets="runtime" />
-    <PackageReference Include="LanMountainDesktop.PluginSdk" Version="4.0.2" ExcludeAssets="runtime" PrivateAssets="all" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.9" ExcludeAssets="all" />
-    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="2.88.9" ExcludeAssets="all" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" ExcludeAssets="all" />
-    <PackageReference Include="SkiaSharp.NativeAssets.WebAssembly" Version="2.88.9" ExcludeAssets="all" />
-    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="8.3.1.1" ExcludeAssets="all" />
-    <PackageReference Include="HarfBuzzSharp.NativeAssets.macOS" Version="8.3.1.1" ExcludeAssets="all" />
-    <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="8.3.1.1" ExcludeAssets="all" />
-    <PackageReference Include="HarfBuzzSharp.NativeAssets.WebAssembly" Version="8.3.1.1" ExcludeAssets="all" />
-    <PackageReference Include="Avalonia.Angle.Windows.Natives" Version="2.1.25547.20250602" ExcludeAssets="all" />
-    <PackageReference Include="Avalonia.Native" Version="11.3.12" ExcludeAssets="all" />
+    <PackageReference Include="Avalonia" Version="12.1.0" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="FluentAvaloniaUI" Version="3.0.1" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="FluentIcons.Avalonia" Version="2.1.331" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="dotnetCampus.Ipc" Version="2.0.0-alpha436" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <PackageReference Include="LanMountainDesktop.PluginSdk" Version="5.0.0" ExcludeAssets="runtime;native" PrivateAssets="all" />
     <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="Localization\*.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="assets\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="elysia-gateway\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Localization\*.json" CopyToOutputDirectory="PreserveNewest" Link="Localization\%(Filename)%(Extension)" />
+    <None Include="assets\elysia.svg" CopyToOutputDirectory="PreserveNewest" Link="assets\elysia.svg" />
+    <None Include="elysia-gateway\package.json" CopyToOutputDirectory="PreserveNewest" Link="elysia-gateway\package.json" />
+    <None Include="elysia-gateway\bun.lock" CopyToOutputDirectory="PreserveNewest" Link="elysia-gateway\bun.lock" />
+    <None Include="elysia-gateway\tsconfig.json" CopyToOutputDirectory="PreserveNewest" Link="elysia-gateway\tsconfig.json" />
+    <None Include="elysia-gateway\src\**\*.ts" CopyToOutputDirectory="PreserveNewest" Link="elysia-gateway\src\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
+
+  <Target Name="CleanPluginOutputBeforeBuild"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <RemoveDir Directories="$(MSBuildProjectDirectory)\bin\$(Configuration)\$(TargetFramework)\content" />
+  </Target>
 
 </Project>

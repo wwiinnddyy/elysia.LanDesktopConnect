@@ -1,125 +1,175 @@
-using System;
-using System.IO;
 using System.Text.Json;
-using System.Threading;
+using LanMountainDesktop.PluginSdk;
 
 namespace Elysia.LanDesktopConnect.Services;
 
 public sealed class ElysiaSettings
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
     public bool IsAutoPort { get; set; } = true;
+
     public int ManualPort { get; set; } = 34567;
+
     public bool AutoRestart { get; set; } = true;
+
     public string LogLevel { get; set; } = "info";
+
     public bool DebugMode { get; set; }
 
-    public static ElysiaSettings Load(string filePath)
+    public bool LegacySettingsImported { get; set; }
+
+    public ElysiaSettings Clone() => new()
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-
-        if (!File.Exists(filePath))
-            return new ElysiaSettings();
-
-        try
-        {
-            var json = File.ReadAllText(filePath).TrimStart('\uFEFF');
-            return JsonSerializer.Deserialize<ElysiaSettings>(json, JsonOptions) ?? new ElysiaSettings();
-        }
-        catch
-        {
-            return new ElysiaSettings();
-        }
-    }
-
-    public void Save(string filePath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-
-        try
-        {
-            var directory = Path.GetDirectoryName(filePath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                Directory.CreateDirectory(directory);
-
-            var json = JsonSerializer.Serialize(this, JsonOptions);
-            File.WriteAllText(filePath, json);
-        }
-        catch
-        {
-        }
-    }
+        IsAutoPort = IsAutoPort,
+        ManualPort = ManualPort,
+        AutoRestart = AutoRestart,
+        LogLevel = LogLevel,
+        DebugMode = DebugMode,
+        LegacySettingsImported = LegacySettingsImported
+    };
 }
 
 public sealed class ElysiaSettingsService
 {
-    private readonly string _settingsPath;
+    public const string SectionId = "IpcBridgeSettingsSection";
+
+    private static readonly JsonSerializerOptions LegacyJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    private readonly ISettingsService _settingsService;
+    private readonly IPluginRuntimeContext _runtimeContext;
+    private readonly object _syncRoot = new();
     private ElysiaSettings _settings;
-    private readonly object _lock = new();
+
+    public ElysiaSettingsService(
+        ISettingsService settingsService,
+        IPluginRuntimeContext runtimeContext)
+    {
+        _settingsService = settingsService;
+        _runtimeContext = runtimeContext;
+        Directory.CreateDirectory(runtimeContext.DataDirectory);
+
+        _settings = LoadFromHost();
+        ImportLegacySettingsIfRequired();
+    }
 
     public event EventHandler<ElysiaSettings>? SettingsChanged;
 
-    public ElysiaSettingsService(string dataDirectory)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
-        _settingsPath = Path.Combine(dataDirectory, "settings.json");
-        _settings = ElysiaSettings.Load(_settingsPath);
-    }
-
     public ElysiaSettings GetSettings()
     {
-        lock (_lock)
+        lock (_syncRoot)
         {
-            return _settings;
+            return _settings.Clone();
         }
-    }
-
-    public void UpdateSettings(Action<ElysiaSettings> updateAction)
-    {
-        ArgumentNullException.ThrowIfNull(updateAction);
-
-        lock (_lock)
-        {
-            updateAction(_settings);
-            _settings.Save(_settingsPath);
-        }
-
-        SettingsChanged?.Invoke(this, _settings);
     }
 
     public T GetValue<T>(string key, T defaultValue)
     {
-        lock (_lock)
+        lock (_syncRoot)
         {
-            return key switch
+            object? value = key switch
             {
-                "ipc.isAutoPort" when _settings.IsAutoPort is T v => v,
-                "ipc.manualPort" when _settings.ManualPort is T v => v,
-                "ipc.autoRestart" when _settings.AutoRestart is T v => v,
-                "ipc.logLevel" when _settings.LogLevel is T v => v,
-                "ipc.debugMode" when _settings.DebugMode is T v => v,
-                _ => defaultValue
+                "ipc.isAutoPort" => _settings.IsAutoPort,
+                "ipc.manualPort" => _settings.ManualPort,
+                "ipc.autoRestart" => _settings.AutoRestart,
+                "ipc.logLevel" => _settings.LogLevel,
+                "ipc.debugMode" => _settings.DebugMode,
+                _ => null
             };
+
+            return value is T typedValue ? typedValue : defaultValue;
         }
     }
 
-    public void SetValue<T>(string key, T value)
+    public void UpdateSettings(Action<ElysiaSettings> updateAction, params string[] changedKeys)
     {
-        UpdateSettings(s =>
+        ArgumentNullException.ThrowIfNull(updateAction);
+
+        ElysiaSettings snapshot;
+        lock (_syncRoot)
         {
-            switch (key)
+            updateAction(_settings);
+            Normalize(_settings);
+            snapshot = _settings.Clone();
+        }
+
+        SaveToHost(snapshot, changedKeys);
+        SettingsChanged?.Invoke(this, snapshot.Clone());
+    }
+
+    private ElysiaSettings LoadFromHost()
+    {
+        var settings = _settingsService.LoadSection<ElysiaSettings>(
+            SettingsScope.Plugin,
+            _runtimeContext.Manifest.Id,
+            SectionId);
+        Normalize(settings);
+        return settings;
+    }
+
+    private void SaveToHost(ElysiaSettings settings, IReadOnlyCollection<string>? changedKeys = null)
+    {
+        _settingsService.SaveSection(
+            SettingsScope.Plugin,
+            _runtimeContext.Manifest.Id,
+            SectionId,
+            settings,
+            changedKeys: changedKeys);
+    }
+
+    private void ImportLegacySettingsIfRequired()
+    {
+        if (_settings.LegacySettingsImported)
+        {
+            return;
+        }
+
+        var legacyPath = Path.Combine(_runtimeContext.DataDirectory, "settings.json");
+        if (File.Exists(legacyPath))
+        {
+            try
             {
-                case "ipc.isAutoPort" when value is bool b: s.IsAutoPort = b; break;
-                case "ipc.manualPort" when value is int i: s.ManualPort = i; break;
-                case "ipc.autoRestart" when value is bool b: s.AutoRestart = b; break;
-                case "ipc.logLevel" when value is string str: s.LogLevel = str; break;
-                case "ipc.debugMode" when value is bool b: s.DebugMode = b; break;
+                var legacyJson = File.ReadAllText(legacyPath).TrimStart('\uFEFF');
+                var legacy = JsonSerializer.Deserialize<ElysiaSettings>(legacyJson, LegacyJsonOptions);
+                if (legacy is not null)
+                {
+                    _settings.IsAutoPort = legacy.IsAutoPort;
+                    _settings.ManualPort = legacy.ManualPort;
+                    _settings.AutoRestart = legacy.AutoRestart;
+                    _settings.LogLevel = legacy.LogLevel;
+                    _settings.DebugMode = legacy.DebugMode;
+                }
             }
-        });
+            catch
+            {
+                // A damaged v4 settings file must not prevent the v5 plugin from loading.
+            }
+        }
+
+        _settings.LegacySettingsImported = true;
+        Normalize(_settings);
+        SaveToHost(_settings.Clone(),
+        [
+            nameof(ElysiaSettings.IsAutoPort),
+            nameof(ElysiaSettings.ManualPort),
+            nameof(ElysiaSettings.AutoRestart),
+            nameof(ElysiaSettings.LogLevel),
+            nameof(ElysiaSettings.DebugMode),
+            nameof(ElysiaSettings.LegacySettingsImported)
+        ]);
+    }
+
+    private static void Normalize(ElysiaSettings settings)
+    {
+        settings.ManualPort = Math.Clamp(settings.ManualPort, 1024, 65535);
+        settings.LogLevel = settings.LogLevel?.Trim().ToLowerInvariant() switch
+        {
+            "debug" => "debug",
+            "warn" => "warn",
+            "error" => "error",
+            _ => "info"
+        };
     }
 }

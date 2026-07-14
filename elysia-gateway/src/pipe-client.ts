@@ -1,5 +1,4 @@
-import { connect, Socket } from 'net';
-import { createConnection } from 'net';
+import { createConnection, type Socket } from 'node:net';
 
 export interface IpcMessage {
   id: string;
@@ -7,119 +6,126 @@ export interface IpcMessage {
   type: string;
   sender: string;
   target?: string;
-  payload?: any;
+  payload?: unknown;
 }
 
 export class PluginPipeClient {
   private socket: Socket | null = null;
-  private pipeName: string;
-  private messageHandlers: ((message: IpcMessage) => void)[] = [];
-  private isConnected = false;
-  private reconnectTimer: Timer | null = null;
+  private readonly messageHandlers: Array<(message: IpcMessage) => void> = [];
+  private connected = false;
+  private disconnecting = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private receiveBuffer = '';
 
-  constructor(pipeName: string) {
-    this.pipeName = pipeName;
-  }
+  constructor(private readonly pipeName: string) {}
 
   async connect(): Promise<void> {
+    if (this.connected) return;
+    if (!this.pipeName) throw new Error('LMD_PLUGIN_PIPE is empty');
+
+    this.disconnecting = false;
     return new Promise((resolve, reject) => {
-      try {
-        // Windows Named Pipe
-        if (process.platform === 'win32') {
-          this.socket = createConnection(this.pipeName);
-        } else {
-          // Unix Domain Socket
-          this.socket = createConnection(this.pipeName);
-        }
+      const socket = createConnection(this.pipeName);
+      this.socket = socket;
 
-        this.socket.on('connect', () => {
-          console.log('[PipeClient] Connected to plugin');
-          this.isConnected = true;
-          resolve();
-        });
+      socket.once('connect', () => {
+        this.connected = true;
+        this.receiveBuffer = '';
+        console.log('[PipeClient] Connected to plugin IPC server');
+        resolve();
+      });
 
-        this.socket.on('data', (data) => {
-          this.handleData(data);
-        });
-
-        this.socket.on('error', (err) => {
-          console.error('[PipeClient] Error:', err.message);
-          if (!this.isConnected) {
-            reject(err);
-          }
-        });
-
-        this.socket.on('close', () => {
-          console.log('[PipeClient] Connection closed');
-          this.isConnected = false;
-          this.scheduleReconnect();
-        });
-      } catch (err) {
-        reject(err);
-      }
+      socket.on('data', (data) => this.handleData(data));
+      socket.on('error', (error) => {
+        console.error('[PipeClient] Error:', error.message);
+        if (!this.connected) reject(error);
+      });
+      socket.on('close', () => {
+        this.connected = false;
+        this.socket = null;
+        this.receiveBuffer = '';
+        console.log('[PipeClient] Connection closed');
+        if (!this.disconnecting) this.scheduleReconnect();
+      });
     });
   }
 
-  private handleData(data: Buffer) {
-    const lines = data.toString().split('\n');
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      
+  private handleData(data: string | Uint8Array): void {
+    this.receiveBuffer += typeof data === 'string'
+      ? data
+      : new TextDecoder().decode(data);
+    while (true) {
+      const newlineIndex = this.receiveBuffer.indexOf('\n');
+      if (newlineIndex < 0) return;
+
+      const line = this.receiveBuffer.slice(0, newlineIndex).trim();
+      this.receiveBuffer = this.receiveBuffer.slice(newlineIndex + 1);
+      if (!line) continue;
+
       try {
-        const message: IpcMessage = JSON.parse(line);
-        // 通知所有消息处理器
-        this.messageHandlers.forEach(handler => handler(message));
-      } catch (err) {
-        console.error('[PipeClient] Failed to parse message:', line);
+        const message = JSON.parse(line) as IpcMessage;
+        for (const handler of this.messageHandlers) {
+          try {
+            handler(message);
+          } catch (error) {
+            console.error('[PipeClient] Message handler failed:', error);
+          }
+        }
+      } catch {
+        console.error('[PipeClient] Failed to parse IPC frame');
       }
     }
   }
 
-  send(message: IpcMessage): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.isConnected) {
-        reject(new Error('Not connected to plugin'));
-        return;
-      }
+  async send(message: IpcMessage): Promise<void> {
+    if (!this.socket || !this.connected) {
+      throw new Error('Not connected to plugin IPC server');
+    }
 
-      const data = JSON.stringify(message) + '\n';
-      this.socket.write(data, (err) => {
-        if (err) reject(err);
+    await new Promise<void>((resolve, reject) => {
+      this.socket!.write(`${JSON.stringify(message)}\n`, (error) => {
+        if (error) reject(error);
         else resolve();
       });
     });
   }
 
-  onMessage(handler: (message: IpcMessage) => void) {
+  onMessage(handler: (message: IpcMessage) => void): void {
     this.messageHandlers.push(handler);
   }
 
-  private scheduleReconnect() {
-    if (this.reconnectTimer) return;
-    
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer || this.disconnecting) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       console.log('[PipeClient] Attempting to reconnect...');
-      this.connect().catch(() => {
-        // 重连失败，继续尝试
-      });
-    }, 5000);
+      void this.connect().catch(() => undefined);
+    }, 2000);
   }
 
   async disconnect(): Promise<void> {
+    this.disconnecting = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    
-    if (this.socket) {
-      this.socket.end();
-      this.socket = null;
+
+    const socket = this.socket;
+    this.socket = null;
+    this.connected = false;
+    if (socket) {
+      await new Promise<void>((resolve) => {
+        socket.once('close', resolve);
+        socket.end();
+        setTimeout(() => {
+          socket.destroy();
+          resolve();
+        }, 1000);
+      });
     }
-    this.isConnected = false;
   }
 
   getIsConnected(): boolean {
-    return this.isConnected;
+    return this.connected;
   }
 }

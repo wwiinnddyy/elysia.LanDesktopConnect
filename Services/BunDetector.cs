@@ -8,24 +8,24 @@ namespace Elysia.LanDesktopConnect.Services;
 
 public class BunDetector
 {
-    public async Task<BunDetectionResult> DetectAsync()
+    public async Task<BunDetectionResult> DetectAsync(CancellationToken cancellationToken = default)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            return await DetectOnWindowsAsync();
+            return await DetectOnWindowsAsync(cancellationToken);
         }
         else
         {
-            return await DetectOnUnixAsync();
+            return await DetectOnUnixAsync(cancellationToken);
         }
     }
 
-    private async Task<BunDetectionResult> DetectOnWindowsAsync()
+    private async Task<BunDetectionResult> DetectOnWindowsAsync(CancellationToken cancellationToken)
     {
         var pathBun = FindInPath("bun.exe");
         if (!string.IsNullOrEmpty(pathBun))
         {
-            var version = await GetBunVersionAsync(pathBun);
+            var version = await GetBunVersionAsync(pathBun, cancellationToken);
             if (version != null)
             {
                 return BunDetectionResult.CreateFound(pathBun, version);
@@ -44,7 +44,7 @@ public class BunDetector
         {
             if (File.Exists(path))
             {
-                var version = await GetBunVersionAsync(path);
+                var version = await GetBunVersionAsync(path, cancellationToken);
                 if (version != null)
                 {
                     return BunDetectionResult.CreateFound(path, version);
@@ -55,13 +55,13 @@ public class BunDetector
         return BunDetectionResult.CreateNotFound();
     }
 
-    private async Task<BunDetectionResult> DetectOnUnixAsync()
+    private async Task<BunDetectionResult> DetectOnUnixAsync(CancellationToken cancellationToken)
     {
-        var whichResult = await RunCommandAsync("which", "bun");
+        var whichResult = await RunCommandAsync("which", "bun", cancellationToken);
         if (whichResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(whichResult.Output))
         {
             var path = whichResult.Output.Trim();
-            var version = await GetBunVersionAsync(path);
+            var version = await GetBunVersionAsync(path, cancellationToken);
             if (version != null)
             {
                 return BunDetectionResult.CreateFound(path, version);
@@ -80,7 +80,7 @@ public class BunDetector
         {
             if (File.Exists(path))
             {
-                var version = await GetBunVersionAsync(path);
+                var version = await GetBunVersionAsync(path, cancellationToken);
                 if (version != null)
                 {
                     return BunDetectionResult.CreateFound(path, version);
@@ -109,11 +109,11 @@ public class BunDetector
         return null;
     }
 
-    private async Task<string?> GetBunVersionAsync(string bunPath)
+    private async Task<string?> GetBunVersionAsync(string bunPath, CancellationToken cancellationToken = default)
     {
         try
         {
-            var result = await RunCommandAsync(bunPath, "--version");
+            var result = await RunCommandAsync(bunPath, "--version", cancellationToken);
             if (result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.Output))
             {
                 return result.Output.Trim();
@@ -140,7 +140,10 @@ public class BunDetector
         return false;
     }
 
-    private async Task<CommandResult> RunCommandAsync(string fileName, string arguments)
+    private async Task<CommandResult> RunCommandAsync(
+        string fileName,
+        string arguments,
+        CancellationToken cancellationToken = default)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -155,9 +158,11 @@ public class BunDetector
         using var process = new Process { StartInfo = startInfo };
         process.Start();
 
-        var output = await process.StandardOutput.ReadToEndAsync();
-        var error = await process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
+        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken);
+        var output = await outputTask;
+        var error = await errorTask;
 
         return new CommandResult(process.ExitCode, output, error);
     }

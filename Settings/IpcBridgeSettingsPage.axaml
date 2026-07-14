@@ -2,277 +2,235 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Elysia.LanDesktopConnect.Settings"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
-             xmlns:fi="using:FluentIcons.Avalonia.Fluent"
              x:Class="Elysia.LanDesktopConnect.Settings.IpcBridgeSettingsPage"
              x:DataType="vm:IpcBridgeSettingsViewModel">
 
   <ScrollViewer VerticalScrollBarVisibility="Auto">
     <StackPanel Classes="settings-page-container" Spacing="12">
-
-      <!-- 介绍文本 -->
-      <TextBlock Text="配置 Elysia IPC 网关，管理 Bun 运行时和外部应用连接。"
-                 Opacity="0.7"
+      <TextBlock Text="{Binding PageDescription}"
+                 Opacity="0.72"
                  TextWrapping="Wrap" />
 
-      <!-- Bun 运行时状态 -->
-      <ui:SettingsExpander Header="Bun 运行时"
+      <Border IsVisible="{Binding HasError}"
+              Padding="12"
+              CornerRadius="8"
+              Background="#22D13438"
+              BorderBrush="#88D13438"
+              BorderThickness="1">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <TextBlock Text="{Binding LastError}"
+                     TextWrapping="Wrap"
+                     VerticalAlignment="Center" />
+          <Button Grid.Column="1"
+                  Command="{Binding ClearErrorCommand}"
+                  Content="×"
+                  MinWidth="32" />
+        </Grid>
+      </Border>
+
+      <ui:FASettingsExpander Header="{Binding BunHeader}"
                            Description="{Binding BunStatusDescription}"
                            IsExpanded="True">
-        <ui:SettingsExpander.IconSource>
-          <fi:SymbolIconSource Symbol="{Binding BunStatusIcon}" />
-        </ui:SettingsExpander.IconSource>
-
-        <!-- 未安装时显示安装按钮 -->
-        <ui:SettingsExpander.Footer>
+        <ui:FASettingsExpander.Footer>
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Command="{Binding InstallBunCommand}"
-                    Content="安装指南"
+                    Content="{Binding InstallGuideText}"
                     IsVisible="{Binding IsBunNotInstalled}" />
-            <TextBlock Text="✓ 已就绪"
+            <TextBlock Text="{Binding ReadyText}"
                        IsVisible="{Binding IsBunInstalled}"
-                       Opacity="0.7"
+                       Opacity="0.72"
                        VerticalAlignment="Center" />
           </StackPanel>
-        </ui:SettingsExpander.Footer>
+        </ui:FASettingsExpander.Footer>
 
-        <!-- Bun 版本信息 -->
-        <ui:SettingsExpanderItem IsVisible="{Binding IsBunInstalled}">
-          <Grid ColumnDefinitions="Auto,*">
-            <TextBlock Text="版本"
-                       Opacity="0.7" />
+        <ui:FASettingsExpanderItem IsVisible="{Binding IsBunInstalled}">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <TextBlock Text="{Binding VersionLabel}" Opacity="0.72" />
             <TextBlock Grid.Column="1"
                        Text="{Binding BunVersion}"
                        HorizontalAlignment="Right" />
           </Grid>
-        </ui:SettingsExpanderItem>
+        </ui:FASettingsExpanderItem>
 
-        <!-- Bun 路径 -->
-        <ui:SettingsExpanderItem IsVisible="{Binding IsBunInstalled}">
-          <Grid ColumnDefinitions="Auto,*">
-            <TextBlock Text="路径"
-                       Opacity="0.7" />
+        <ui:FASettingsExpanderItem IsVisible="{Binding IsBunInstalled}">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <TextBlock Text="{Binding PathLabel}" Opacity="0.72" />
             <TextBlock Grid.Column="1"
                        Text="{Binding BunPath}"
                        HorizontalAlignment="Right"
                        FontSize="12"
-                       Opacity="0.6"
+                       Opacity="0.65"
                        TextTrimming="CharacterEllipsis" />
           </Grid>
-        </ui:SettingsExpanderItem>
+        </ui:FASettingsExpanderItem>
 
-        <!-- 重新检测按钮 -->
-        <ui:SettingsExpanderItem>
+        <ui:FASettingsExpanderItem>
           <Button Command="{Binding CheckBunCommand}"
-                  Content="重新检测"
+                  Content="{Binding CheckAgainText}"
                   HorizontalAlignment="Right" />
-        </ui:SettingsExpanderItem>
-      </ui:SettingsExpander>
+        </ui:FASettingsExpanderItem>
+      </ui:FASettingsExpander>
 
-      <!-- 网关服务控制 -->
-      <ui:SettingsExpander Header="网关服务"
+      <ui:FASettingsExpander Header="{Binding GatewayHeader}"
                            Description="{Binding GatewayStatusDescription}"
                            IsExpanded="True">
-        <ui:SettingsExpander.IconSource>
-          <fi:SymbolIconSource Symbol="{Binding GatewayStatusIcon}" />
-        </ui:SettingsExpander.IconSource>
-
-        <!-- 操作按钮 -->
-        <ui:SettingsExpander.Footer>
+        <ui:FASettingsExpander.Footer>
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Command="{Binding ToggleGatewayCommand}"
                     Content="{Binding ToggleGatewayButtonText}"
                     IsEnabled="{Binding CanToggleGateway}" />
             <Button Command="{Binding RestartGatewayCommand}"
-                    Content="重启"
+                    Content="{Binding RestartText}"
                     IsVisible="{Binding IsGatewayRunning}" />
           </StackPanel>
-        </ui:SettingsExpander.Footer>
+        </ui:FASettingsExpander.Footer>
 
-        <!-- 端口信息 -->
-        <ui:SettingsExpanderItem IsVisible="{Binding IsGatewayRunning}">
-          <Grid ColumnDefinitions="Auto,*">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <fi:SymbolIcon Symbol="PlugConnected" />
-              <TextBlock Text="监听端口" />
-            </StackPanel>
+        <ui:FASettingsExpanderItem IsVisible="{Binding IsGatewayRunning}">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <TextBlock Text="{Binding PortLabel}" />
             <TextBlock Grid.Column="1"
                        Text="{Binding GatewayPortText}"
                        HorizontalAlignment="Right"
-                       FontWeight="SemiBold"
-                       Foreground="{DynamicResource AccentFillColorDefaultBrush}" />
+                       FontWeight="SemiBold" />
           </Grid>
-        </ui:SettingsExpanderItem>
+        </ui:FASettingsExpanderItem>
 
-        <!-- 运行时间 -->
-        <ui:SettingsExpanderItem IsVisible="{Binding IsGatewayRunning}">
-          <Grid ColumnDefinitions="Auto,*">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <fi:SymbolIcon Symbol="Clock" />
-              <TextBlock Text="运行时间" />
-            </StackPanel>
+        <ui:FASettingsExpanderItem IsVisible="{Binding IsGatewayRunning}">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <TextBlock Text="{Binding UptimeLabel}" />
             <TextBlock Grid.Column="1"
                        Text="{Binding GatewayUptimeText}"
                        HorizontalAlignment="Right" />
           </Grid>
-        </ui:SettingsExpanderItem>
+        </ui:FASettingsExpanderItem>
 
-        <!-- 连接数 -->
-        <ui:SettingsExpanderItem IsVisible="{Binding IsGatewayRunning}">
-          <Grid ColumnDefinitions="Auto,*">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <fi:SymbolIcon Symbol="Apps" />
-              <TextBlock Text="已连接应用" />
-            </StackPanel>
+        <ui:FASettingsExpanderItem IsVisible="{Binding IsGatewayRunning}">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <TextBlock Text="{Binding ConnectedAppsLabel}" />
             <TextBlock Grid.Column="1"
                        Text="{Binding ConnectedAppsCountText}"
                        HorizontalAlignment="Right" />
           </Grid>
-        </ui:SettingsExpanderItem>
+        </ui:FASettingsExpanderItem>
 
-        <!-- 查看日志 -->
-        <ui:SettingsExpanderItem>
+        <ui:FASettingsExpanderItem>
           <Button Command="{Binding ViewLogsCommand}"
-                  Content="查看日志"
+                  Content="{Binding ViewLogsText}"
                   HorizontalAlignment="Right" />
-        </ui:SettingsExpanderItem>
-      </ui:SettingsExpander>
+        </ui:FASettingsExpanderItem>
+      </ui:FASettingsExpander>
 
-      <!-- 已连接应用列表 -->
-      <ui:SettingsExpander Header="已连接应用"
+      <ui:FASettingsExpander Header="{Binding ConnectedAppsHeader}"
                            Description="{Binding ConnectedAppsDescription}"
-                           IsExpanded="{Binding IsGatewayRunning}"
-                           IsVisible="{Binding HasConnectedApps}">
-        <ui:SettingsExpander.IconSource>
-          <fi:SymbolIconSource Symbol="AppsList" />
-        </ui:SettingsExpander.IconSource>
-
-        <!-- 刷新按钮 -->
-        <ui:SettingsExpander.Footer>
+                           IsExpanded="{Binding IsGatewayRunning}">
+        <ui:FASettingsExpander.Footer>
           <Button Command="{Binding RefreshAppsCommand}"
-                  Content="刷新" />
-        </ui:SettingsExpander.Footer>
+                  Content="{Binding RefreshText}" />
+        </ui:FASettingsExpander.Footer>
 
-        <!-- 应用列表 -->
-        <ItemsControl ItemsSource="{Binding ConnectedApps}">
+        <ItemsControl ItemsSource="{Binding ConnectedApps}"
+                      IsVisible="{Binding HasConnectedApps}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:ConnectedAppViewModel">
-              <ui:SettingsExpanderItem>
-                <Grid ColumnDefinitions="Auto,*,Auto"
-                      ColumnSpacing="12">
-                  <!-- 应用类型图标 -->
-                  <Border Width="32"
-                          Height="32"
-                          CornerRadius="6"
-                          Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
-                    <fi:SymbolIcon Symbol="{Binding AppTypeIcon}"
-                                   FontSize="16" />
-                  </Border>
-
-                  <!-- 应用信息 -->
-                  <StackPanel Grid.Column="1"
-                              VerticalAlignment="Center">
-                    <TextBlock Text="{Binding AppName}"
-                               FontWeight="SemiBold" />
+              <ui:FASettingsExpanderItem>
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                  <TextBlock Text="●" VerticalAlignment="Center" />
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding AppName}" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding AppDetails}"
                                FontSize="12"
-                               Opacity="0.6" />
+                               Opacity="0.65" />
                   </StackPanel>
-
-                  <!-- 连接时间 -->
                   <TextBlock Grid.Column="2"
                              Text="{Binding ConnectedTime}"
                              FontSize="12"
-                             Opacity="0.5"
+                             Opacity="0.55"
                              VerticalAlignment="Center" />
                 </Grid>
-              </ui:SettingsExpanderItem>
+              </ui:FASettingsExpanderItem>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-      </ui:SettingsExpander>
+      </ui:FASettingsExpander>
 
-      <!-- 高级设置 -->
-      <ui:SettingsExpander Header="高级设置"
-                           Description="配置网关高级选项"
+      <ui:FASettingsExpander Header="{Binding AdvancedHeader}"
+                           Description="{Binding AdvancedDescription}"
                            IsExpanded="False">
-        <ui:SettingsExpander.IconSource>
-          <fi:SymbolIconSource Symbol="Settings" />
-        </ui:SettingsExpander.IconSource>
 
-        <!-- 端口配置 -->
-        <ui:SettingsExpanderItem>
-          <Grid ColumnDefinitions="*,Auto">
+        <ui:FASettingsExpanderItem>
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
             <StackPanel Spacing="4">
-              <TextBlock Text="端口配置"
-                         FontWeight="SemiBold" />
-              <TextBlock Text="选择自动分配或手动指定端口"
+              <TextBlock Text="{Binding PortConfigurationLabel}" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding PortConfigurationDescription}"
                          FontSize="12"
-                         Opacity="0.6" />
+                         Opacity="0.65"
+                         TextWrapping="Wrap" />
             </StackPanel>
-            <StackPanel Grid.Column="1"
-                        Orientation="Horizontal"
-                        Spacing="8">
-              <RadioButton Content="自动"
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+              <RadioButton GroupName="PortMode"
+                           Content="{Binding AutoPortText}"
                            IsChecked="{Binding IsAutoPort}" />
-              <RadioButton Content="手动"
-                           IsChecked="{Binding !IsAutoPort}" />
-              <ui:NumberBox Value="{Binding ManualPortNumber}"
-                         Minimum="1024"
-                         Maximum="65535"
-                         Width="100"
-                         IsVisible="{Binding !IsAutoPort}"
-                         IsEnabled="{Binding !IsGatewayRunning}" />
+              <RadioButton GroupName="PortMode"
+                           Content="{Binding ManualPortText}"
+                           IsChecked="{Binding IsManualPort}" />
+              <ui:FANumberBox Value="{Binding ManualPortNumber}"
+                            Minimum="1024"
+                            Maximum="65535"
+                            Width="110"
+                            IsVisible="{Binding IsManualPort}"
+                            IsEnabled="{Binding !IsGatewayRunning}" />
             </StackPanel>
           </Grid>
-        </ui:SettingsExpanderItem>
+        </ui:FASettingsExpanderItem>
 
-        <!-- 自动重启 -->
-        <ui:SettingsExpanderItem>
-          <Grid ColumnDefinitions="*,Auto">
+        <ui:FASettingsExpanderItem>
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
             <StackPanel Spacing="4">
-              <TextBlock Text="自动重启"
-                         FontWeight="SemiBold" />
-              <TextBlock Text="崩溃后自动重启，最多5次"
+              <TextBlock Text="{Binding AutoRestartLabel}" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding AutoRestartDescription}"
                          FontSize="12"
-                         Opacity="0.6" />
+                         Opacity="0.65"
+                         TextWrapping="Wrap" />
             </StackPanel>
-            <ToggleSwitch IsChecked="{Binding AutoRestart}" />
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding AutoRestart}" />
           </Grid>
-        </ui:SettingsExpanderItem>
+        </ui:FASettingsExpanderItem>
 
-        <!-- 日志级别 -->
-        <ui:SettingsExpanderItem>
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Text="日志级别"
-                       VerticalAlignment="Center" />
-            <ComboBox ItemsSource="{Binding LogLevels}"
+        <ui:FASettingsExpanderItem>
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+            <TextBlock Text="{Binding LogLevelLabel}" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1"
+                      ItemsSource="{Binding LogLevels}"
                       SelectedItem="{Binding SelectedLogLevel}"
-                      Width="120" />
+                      Width="130">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:LogLevelOption">
+                  <TextBlock Text="{Binding DisplayName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
           </Grid>
-        </ui:SettingsExpanderItem>
+        </ui:FASettingsExpanderItem>
 
-        <!-- 调试模式 -->
-        <ui:SettingsExpanderItem>
-          <Grid ColumnDefinitions="*,Auto">
+        <ui:FASettingsExpanderItem>
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
             <StackPanel Spacing="4">
-              <TextBlock Text="调试模式"
-                         FontWeight="SemiBold" />
-              <TextBlock Text="显示详细日志信息"
+              <TextBlock Text="{Binding DebugModeLabel}" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding DebugModeDescription}"
                          FontSize="12"
-                         Opacity="0.6" />
+                         Opacity="0.65"
+                         TextWrapping="Wrap" />
             </StackPanel>
-            <ToggleSwitch IsChecked="{Binding DebugMode}" />
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding DebugMode}" />
           </Grid>
-        </ui:SettingsExpanderItem>
+        </ui:FASettingsExpanderItem>
 
-        <!-- 重置配置 -->
-        <ui:SettingsExpanderItem>
+        <ui:FASettingsExpanderItem>
           <Button Command="{Binding ResetSettingsCommand}"
-                  Content="恢复默认设置"
+                  Content="{Binding ResetText}"
                   HorizontalAlignment="Right" />
-        </ui:SettingsExpanderItem>
-      </ui:SettingsExpander>
-
+        </ui:FASettingsExpanderItem>
+      </ui:FASettingsExpander>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

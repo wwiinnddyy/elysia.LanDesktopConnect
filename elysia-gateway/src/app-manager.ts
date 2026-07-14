@@ -1,17 +1,20 @@
-import type { ServerWebSocket } from 'bun';
+export interface GatewayWebSocket {
+  send(data: string): unknown;
+  readonly remoteAddress?: string;
+}
 
 export interface ExternalApp {
   id: string;
   name: string;
   type: string;
   capabilities: string[];
-  ws: ServerWebSocket<any>;
+  ws: GatewayWebSocket;
   connectedAt: number;
 }
 
 export class ExternalAppManager {
   private apps = new Map<string, ExternalApp>();
-  private wsToApp = new Map<ServerWebSocket<any>, string>();
+  private wsToApp = new Map<GatewayWebSocket, string>();
 
   registerApp(app: ExternalApp): void {
     this.apps.set(app.id, app);
@@ -19,7 +22,7 @@ export class ExternalAppManager {
     console.log(`[AppManager] App registered: ${app.name} (${app.id})`);
   }
 
-  removeApp(ws: ServerWebSocket<any>): void {
+  removeApp(ws: GatewayWebSocket): void {
     const appId = this.wsToApp.get(ws);
     if (appId) {
       const app = this.apps.get(appId);
@@ -35,7 +38,7 @@ export class ExternalAppManager {
     return this.apps.get(id);
   }
 
-  getAppByWs(ws: ServerWebSocket<any>): ExternalApp | undefined {
+  getAppByWs(ws: GatewayWebSocket): ExternalApp | undefined {
     const appId = this.wsToApp.get(ws);
     if (appId) {
       return this.apps.get(appId);

@@ -3,19 +3,16 @@ using LanMountainDesktop.PluginSdk;
 
 namespace Elysia.LanDesktopConnect.Settings;
 
-[SettingsPageInfo(
-    id: "elysia.ipc-bridge",
-    name: "Elysia IPC Bridge",
-    category: SettingsPageCategory.Plugin,
-    TitleLocalizationKey = "settings.ipc_bridge.title",
-    DescriptionLocalizationKey = "settings.ipc_bridge.description",
-    IconKey = "PlugConnected",
-    SortOrder = 100)]
 public partial class IpcBridgeSettingsPage : SettingsPageBase
 {
     public IpcBridgeSettingsPage()
     {
         InitializeComponent();
+    }
+
+    public IpcBridgeSettingsPage(IpcBridgeSettingsViewModel viewModel) : this()
+    {
+        DataContext = viewModel;
     }
 
     private void InitializeComponent()
@@ -26,11 +23,9 @@ public partial class IpcBridgeSettingsPage : SettingsPageBase
     public override void OnNavigatedTo(object? parameter)
     {
         base.OnNavigatedTo(parameter);
-
-        // 页面显示时刷新数据
-        if (DataContext is IpcBridgeSettingsViewModel vm)
+        if (DataContext is IpcBridgeSettingsViewModel viewModel)
         {
-            vm.RefreshCommand?.Execute(null);
+            _ = viewModel.RefreshAsync();
         }
     }
 }

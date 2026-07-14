@@ -1,19 +1,10 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$TemplatePath,
-
-    [Parameter(Mandatory = $true)]
-    [string]$PackagePath,
-
-    [Parameter(Mandatory = $true)]
-    [string]$Version,
-
-    [Parameter(Mandatory = $true)]
-    [string]$ReleaseTag,
-
-    [Parameter(Mandatory = $true)]
-    [string]$OutputPath
+    [Parameter(Mandatory = $true)][string]$TemplatePath,
+    [Parameter(Mandatory = $true)][string]$PackagePath,
+    [Parameter(Mandatory = $true)][string]$Version,
+    [Parameter(Mandatory = $true)][string]$ReleaseTag,
+    [Parameter(Mandatory = $true)][string]$OutputPath
 )
 
 Set-StrictMode -Version Latest
@@ -27,72 +18,56 @@ function Write-Utf8File([string]$Path, [string]$Content) {
     [System.IO.File]::WriteAllText($Path, $Content, $encoding)
 }
 
-function Get-RepositoryInfo([string]$RepositoryUrl) {
-    $uri = [Uri]$RepositoryUrl
-    if ($uri.Host -ne "github.com") {
-        throw "Unsupported repository host in '$RepositoryUrl'."
-    }
-
-    $segments = $uri.AbsolutePath.Trim("/") -split "/"
-    if ($segments.Length -ne 2) {
-        throw "Repository URL '$RepositoryUrl' must point to the GitHub repository root."
-    }
-
-    return @{
-        Owner = $segments[0]
-        Name = $segments[1]
-    }
-}
-
 function Get-PropertyValue($Object, [string]$Name) {
-    if ($null -eq $Object) {
-        return $null
-    }
-
+    if ($null -eq $Object) { return $null }
     $property = $Object.PSObject.Properties[$Name]
-    if ($null -eq $property) {
-        return $null
-    }
-
+    if ($null -eq $property) { return $null }
     return $property.Value
 }
 
 function Get-ArrayValue($Object, [string]$Name) {
     $value = Get-PropertyValue -Object $Object -Name $Name
-    if ($null -eq $value) {
-        return @()
-    }
-
-    if ($value -is [array]) {
-        return $value
-    }
-
+    if ($null -eq $value) { return @() }
+    if ($value -is [array]) { return $value }
     return @($value)
+}
+
+function Assert-ThreePartVersion([string]$Value, [string]$FieldName) {
+    if ($Value -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
+        throw "$FieldName must be a three-part version, actual '$Value'."
+    }
+}
+
+function Get-RepositoryInfo([string]$RepositoryUrl) {
+    $uri = [Uri]$RepositoryUrl
+    if ($uri.Scheme -ne "https" -or $uri.Host -ne "github.com") {
+        throw "Repository URL '$RepositoryUrl' must use https://github.com."
+    }
+
+    $segments = $uri.AbsolutePath.Trim("/") -split "/"
+    if ($segments.Length -ne 2) {
+        throw "Repository URL '$RepositoryUrl' must point to a GitHub repository root."
+    }
+
+    return @{ Owner = $segments[0]; Name = $segments[1] }
 }
 
 function Get-PackageManifest([string]$ArchivePath) {
     $archive = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
     try {
-        $manifestEntry = $archive.Entries | Where-Object { $_.FullName -eq "plugin.json" } | Select-Object -First 1
-        if ($null -eq $manifestEntry) {
-            throw "Plugin package '$ArchivePath' does not contain 'plugin.json'."
+        $entries = @($archive.Entries | Where-Object { $_.FullName -eq "plugin.json" })
+        if ($entries.Count -ne 1) {
+            throw "Plugin package '$ArchivePath' must contain exactly one root plugin.json."
         }
 
-        $stream = $null
-        $reader = $null
+        $stream = $entries[0].Open()
+        $reader = [System.IO.StreamReader]::new($stream, [System.Text.UTF8Encoding]::UTF8, $true)
         try {
-            $stream = $manifestEntry.Open()
-            $reader = [System.IO.StreamReader]::new($stream, [System.Text.UTF8Encoding]::UTF8, $true)
             return $reader.ReadToEnd() | ConvertFrom-Json
         }
         finally {
-            if ($reader) {
-                $reader.Dispose()
-            }
-
-            if ($stream) {
-                $stream.Dispose()
-            }
+            $reader.Dispose()
+            $stream.Dispose()
         }
     }
     finally {
@@ -100,86 +75,93 @@ function Get-PackageManifest([string]$ArchivePath) {
     }
 }
 
-$template = Get-Content $TemplatePath -Encoding UTF8 -Raw | ConvertFrom-Json
-$resolvedPackagePath = Resolve-Path $PackagePath -ErrorAction Stop
-$assetName = [System.IO.Path]::GetFileName($resolvedPackagePath)
-$hash = (Get-FileHash -Path $resolvedPackagePath -Algorithm SHA256).Hash.ToLowerInvariant()
-$packageSize = (Get-Item $resolvedPackagePath).Length
-
+$template = Get-Content -LiteralPath $TemplatePath -Encoding UTF8 -Raw | ConvertFrom-Json
+$resolvedPackagePath = (Resolve-Path -LiteralPath $PackagePath -ErrorAction Stop).Path
 $manifest = Get-PackageManifest -ArchivePath $resolvedPackagePath
-$manifestVersion = [string](Get-PropertyValue $manifest "version")
-if ([string]::IsNullOrWhiteSpace($manifestVersion)) {
-    throw "Plugin manifest inside '$resolvedPackagePath' is missing 'version'."
+
+Assert-ThreePartVersion -Value $Version -FieldName "Version"
+Assert-ThreePartVersion -Value ([string]$manifest.version) -FieldName "plugin.json version"
+Assert-ThreePartVersion -Value ([string]$manifest.apiVersion) -FieldName "plugin.json apiVersion"
+
+if ([string]$manifest.version -ne $Version) {
+    throw "Requested version '$Version' does not match package manifest version '$($manifest.version)'."
 }
 
-if ($manifestVersion -ne $Version) {
-    throw "Requested version '$Version' does not match package manifest version '$manifestVersion'."
+if ([string]$manifest.apiVersion -ne "5.0.0") {
+    throw "Production market releases must target PluginSdk API 5.0.0, actual '$($manifest.apiVersion)'."
 }
 
-if ($ReleaseTag -ne "v$manifestVersion") {
-    throw "Release tag '$ReleaseTag' does not match package manifest version '$manifestVersion'."
+if ($ReleaseTag -ne "v$Version") {
+    throw "Release tag '$ReleaseTag' must be 'v$Version'."
+}
+
+$assetName = [System.IO.Path]::GetFileName($resolvedPackagePath)
+$expectedAssetName = "$($manifest.id).$Version.laapp"
+if ($assetName -ne $expectedAssetName) {
+    throw "Package name mismatch. Expected '$expectedAssetName', actual '$assetName'."
 }
 
 $repositoryUrl = [string](Get-PropertyValue $template "repositoryUrl")
-if ([string]::IsNullOrWhiteSpace($repositoryUrl)) {
-    $repositoryUrl = [string](Get-PropertyValue $template "projectUrl")
-}
-
-if ([string]::IsNullOrWhiteSpace($repositoryUrl)) {
-    throw "Template is missing repositoryUrl/projectUrl."
-}
-
 $repo = Get-RepositoryInfo -RepositoryUrl $repositoryUrl
-$releaseDownloadUrl = "https://github.com/$($repo.Owner)/$($repo.Name)/releases/download/$ReleaseTag/$assetName"
+if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY) -and $env:GITHUB_REPOSITORY -match '^[^/]+/[^/]+$') {
+    $repositoryParts = $env:GITHUB_REPOSITORY -split '/', 2
+    $repo.Owner = $repositoryParts[0]
+    $repo.Name = $repositoryParts[1]
+}
+
+$actualRepositoryUrl = "https://github.com/$($repo.Owner)/$($repo.Name)"
+$releaseDownloadUrl = "$actualRepositoryUrl/releases/download/$ReleaseTag/$assetName"
 $rawFallbackUrl = "https://raw.githubusercontent.com/$($repo.Owner)/$($repo.Name)/main/$assetName"
-$workspaceLocalPath = "./$assetName"
-
-$sharedContracts = @(
-    Get-ArrayValue -Object $manifest -Name "sharedContracts" |
-        ForEach-Object {
-            [pscustomobject][ordered]@{
-                id = [string](Get-PropertyValue $_ "id")
-                version = [string](Get-PropertyValue $_ "version")
-                assemblyName = [string](Get-PropertyValue $_ "assemblyName")
-            }
-        }
-)
-
-$tags = @(
-    Get-ArrayValue -Object $template -Name "tags" |
-        Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
-        ForEach-Object { [string]$_ }
-)
-
+$workspaceLocalUrl = "workspace://$($repo.Name)/$assetName"
+$hash = (Get-FileHash -LiteralPath $resolvedPackagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$packageSize = (Get-Item -LiteralPath $resolvedPackagePath).Length
 $timestamp = [DateTimeOffset]::UtcNow.ToString("o")
 
+$sharedContracts = @(Get-ArrayValue -Object $manifest -Name "sharedContracts")
+$tags = @(Get-ArrayValue -Object $template -Name "tags")
+$desktopComponents = @(Get-ArrayValue -Object $template -Name "desktopComponents")
+$settingsSections = @(Get-ArrayValue -Object $template -Name "settingsSections")
+$exports = @(Get-ArrayValue -Object $template -Name "exports")
+$messageTypes = @(Get-ArrayValue -Object $template -Name "messageTypes")
+$minHostVersion = [string](Get-PropertyValue $template "minHostVersion")
+Assert-ThreePartVersion -Value $minHostVersion -FieldName "minHostVersion"
+if ([Version]$minHostVersion -lt [Version]"0.8.6") {
+    throw "PluginSdk 5 releases require minHostVersion 0.8.6 or newer."
+}
+
+$releaseNotes = [string](Get-PropertyValue $template "releaseNotes")
 $entry = [pscustomobject][ordered]@{
+    '$schema' = "https://raw.githubusercontent.com/wwiinnddyy/LanAirApp/main/airappmarket/schema/market-manifest.schema.json"
     schemaVersion = "2.0.0"
     generatedAt = $timestamp
     manifest = [pscustomobject][ordered]@{
-        id = [string](Get-PropertyValue $manifest "id")
-        name = [string](Get-PropertyValue $manifest "name")
-        description = [string](Get-PropertyValue $manifest "description")
-        author = [string](Get-PropertyValue $manifest "author")
-        version = $manifestVersion
-        apiVersion = [string](Get-PropertyValue $manifest "apiVersion")
+        id = [string]$manifest.id
+        name = [string]$manifest.name
+        description = [string]$manifest.description
+        author = [string]$manifest.author
+        version = [string]$manifest.version
+        apiVersion = [string]$manifest.apiVersion
+        entranceAssembly = [string]$manifest.entranceAssembly
+        runtime = $manifest.runtime
         sharedContracts = $sharedContracts
         tags = $tags
         releaseTag = $ReleaseTag
         releaseAssetName = $assetName
-        releaseNotes = [string](Get-PropertyValue $template "releaseNotes")
+        releaseNotes = $releaseNotes
     }
     compatibility = [pscustomobject][ordered]@{
-        minHostVersion = [string](Get-PropertyValue $template "minHostVersion")
-        apiVersion = [string](Get-PropertyValue $manifest "apiVersion")
+        minHostVersion = $minHostVersion
+        apiVersion = [string]$manifest.apiVersion
         sharedContracts = $sharedContracts
     }
     repository = [pscustomobject][ordered]@{
-        projectUrl = [string](Get-PropertyValue $template "projectUrl")
-        readmeUrl = [string](Get-PropertyValue $template "readmeUrl")
-        homepageUrl = [string](Get-PropertyValue $template "homepageUrl")
-        repositoryUrl = [string](Get-PropertyValue $template "repositoryUrl")
         iconUrl = [string](Get-PropertyValue $template "iconUrl")
+        projectUrl = $actualRepositoryUrl
+        readmeUrl = "https://raw.githubusercontent.com/$($repo.Owner)/$($repo.Name)/main/README.md"
+        homepageUrl = [string](Get-PropertyValue $template "homepageUrl")
+        repositoryUrl = $actualRepositoryUrl
+        tags = $tags
+        releaseNotes = $releaseNotes
     }
     publication = [pscustomobject][ordered]@{
         releaseTag = $ReleaseTag
@@ -187,6 +169,7 @@ $entry = [pscustomobject][ordered]@{
         downloadUrl = $releaseDownloadUrl
         sha256 = $hash
         packageSizeBytes = $packageSize
+        releaseNotes = $releaseNotes
         packageSources = @(
             [pscustomobject][ordered]@{
                 kind = "releaseAsset"
@@ -196,7 +179,7 @@ $entry = [pscustomobject][ordered]@{
                 sizeBytes = $packageSize
                 releaseTag = $ReleaseTag
                 priority = 0
-            }
+            },
             [pscustomobject][ordered]@{
                 kind = "rawFallback"
                 url = $rawFallbackUrl
@@ -205,10 +188,10 @@ $entry = [pscustomobject][ordered]@{
                 sizeBytes = $packageSize
                 releaseTag = $ReleaseTag
                 priority = 1
-            }
+            },
             [pscustomobject][ordered]@{
                 kind = "workspaceLocal"
-                path = $workspaceLocalPath
+                url = $workspaceLocalUrl
                 assetName = $assetName
                 sha256 = $hash
                 sizeBytes = $packageSize
@@ -216,6 +199,13 @@ $entry = [pscustomobject][ordered]@{
                 priority = 2
             }
         )
+    }
+    capabilities = [pscustomobject][ordered]@{
+        sharedContracts = $sharedContracts
+        desktopComponents = $desktopComponents
+        settingsSections = $settingsSections
+        exports = $exports
+        messageTypes = $messageTypes
     }
 }
 

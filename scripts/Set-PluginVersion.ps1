@@ -1,8 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
-    [string]$Version,
-
+    [Parameter(Mandatory = $true)][string]$Version,
     [string]$RepositoryRoot
 )
 
@@ -14,19 +12,17 @@ if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
     $RepositoryRoot = (Resolve-Path (Join-Path $scriptRoot "..")).Path
 }
 
-function Assert-Version([string]$Value) {
-    $candidate = $Value.Trim()
-    if ($candidate.StartsWith("v", [System.StringComparison]::OrdinalIgnoreCase)) {
-        $candidate = $candidate.Substring(1)
-    }
+$normalizedVersion = $Version.Trim()
+if ($normalizedVersion.StartsWith("v", [System.StringComparison]::OrdinalIgnoreCase)) {
+    $normalizedVersion = $normalizedVersion.Substring(1)
+}
 
-    $core = ($candidate -split '[-+ ]', 2)[0]
-    $parsed = $null
-    if (-not [Version]::TryParse($core, [ref]$parsed)) {
-        throw "Invalid plugin version '$Value'."
-    }
+if ($normalizedVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
+    throw "Plugin version must be a three-part version, actual '$Version'."
+}
 
-    return $candidate
+if ([Version]$normalizedVersion -le [Version]"0.0.2") {
+    throw "Version '$normalizedVersion' would overwrite the published/current 0.0.1 or 0.0.2 line."
 }
 
 function Write-Utf8File([string]$Path, [string]$Content) {
@@ -34,33 +30,28 @@ function Write-Utf8File([string]$Path, [string]$Content) {
     [System.IO.File]::WriteAllText($Path, $Content, $encoding)
 }
 
-$normalizedVersion = Assert-Version $Version
-$pluginId = "Elysia.LanDesktopConnect"
-$assetName = "$pluginId.$normalizedVersion.laapp"
-$releaseTag = "v$normalizedVersion"
-
-$csprojPath = Join-Path $RepositoryRoot "Elysia.LanDesktopConnect.csproj"
+$projectPath = Join-Path $RepositoryRoot "Elysia.LanDesktopConnect.csproj"
 $manifestPath = Join-Path $RepositoryRoot "plugin.json"
-$readmePath = Join-Path $RepositoryRoot "README.md"
+$gatewayPackagePath = Join-Path $RepositoryRoot "elysia-gateway\package.json"
 
-$csprojContent = [System.IO.File]::ReadAllText($csprojPath)
-$versionPattern = "<Version>.*?</Version>"
-if (-not [System.Text.RegularExpressions.Regex]::IsMatch(
-    $csprojContent,
-    $versionPattern,
-    [System.Text.RegularExpressions.RegexOptions]::Singleline)) {
-    throw "Failed to locate <Version> in '$csprojPath'."
+$projectContent = [System.IO.File]::ReadAllText($projectPath)
+if ($projectContent -notmatch '<Version>[^<]+</Version>') {
+    throw "Failed to locate <Version> in '$projectPath'."
 }
-$updatedCsproj = [System.Text.RegularExpressions.Regex]::Replace(
-    $csprojContent,
-    $versionPattern,
+$projectContent = [System.Text.RegularExpressions.Regex]::Replace(
+    $projectContent,
+    '<Version>[^<]+</Version>',
     "<Version>$normalizedVersion</Version>",
-    [System.Text.RegularExpressions.RegexOptions]::Singleline)
-Write-Utf8File -Path $csprojPath -Content $updatedCsproj
+    1)
+Write-Utf8File -Path $projectPath -Content $projectContent
 
-$manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+$manifest = Get-Content -LiteralPath $manifestPath -Encoding UTF8 -Raw | ConvertFrom-Json
 $manifest.version = $normalizedVersion
-$manifestJson = $manifest | ConvertTo-Json -Depth 10
-Write-Utf8File -Path $manifestPath -Content ($manifestJson + [Environment]::NewLine)
+Write-Utf8File -Path $manifestPath -Content (($manifest | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
 
-Write-Host "Updated plugin version to $normalizedVersion."
+$gatewayPackage = Get-Content -LiteralPath $gatewayPackagePath -Encoding UTF8 -Raw | ConvertFrom-Json
+$gatewayPackage.version = $normalizedVersion
+Write-Utf8File -Path $gatewayPackagePath -Content (($gatewayPackage | ConvertTo-Json -Depth 20) + [Environment]::NewLine)
+
+Write-Host "Updated plugin and gateway versions to $normalizedVersion."
+Write-Host "Run 'bun install' in elysia-gateway, rebuild the .laapp, and regenerate market-manifest.json before release."

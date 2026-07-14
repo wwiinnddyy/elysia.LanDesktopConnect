@@ -48,6 +48,11 @@ CodeCoverage/
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
 
+# Bun gateway dependencies and generated output
+elysia-gateway/node_modules/
+elysia-gateway/dist/
+.nuget/
+
 # NUnit
 *.VisualState.xml
 TestResult.xml

@@ -1,29 +1,29 @@
 {
-  "id": "Elysia.LanDesktopConnect",
-  "name": "Elysia IPC Bridge",
-  "description": "基于 Elysia 的 IPC 网关插件，实现阑山桌面与外部应用的双向通信。支持 Tauri、Web、Rust 等应用通过 WebSocket 连接。",
-  "author": "Elysia",
-  "version": "",
-  "apiVersion": "4.0.0",
-  "minHostVersion": "0.0.1",
-  "downloadUrl": "",
-  "sha256": "",
-  "packageSizeBytes": 0,
-  "iconUrl": "https://raw.githubusercontent.com/wwiinnddyy/elysia.LanDesktopConnect/main/assets/elysia.svg",
-  "releaseTag": "",
-  "releaseAssetName": "",
+  "repositoryUrl": "https://github.com/wwiinnddyy/elysia.LanDesktopConnect",
   "projectUrl": "https://github.com/wwiinnddyy/elysia.LanDesktopConnect",
   "readmeUrl": "https://raw.githubusercontent.com/wwiinnddyy/elysia.LanDesktopConnect/main/README.md",
   "homepageUrl": "https://github.com/wwiinnddyy/elysia.LanDesktopConnect",
-  "repositoryUrl": "https://github.com/wwiinnddyy/elysia.LanDesktopConnect",
+  "iconUrl": "https://raw.githubusercontent.com/wwiinnddyy/elysia.LanDesktopConnect/main/assets/elysia.svg",
+  "minHostVersion": "0.8.6",
   "tags": [
     "ipc",
-    "gateway",
-    "elysia",
+    "bridge",
     "websocket",
-    "bridge"
+    "gateway",
+    "elysia"
   ],
-  "publishedAt": "",
-  "updatedAt": "",
-  "releaseNotes": "Elysia IPC Bridge 插件提供跨应用通信能力，让外部应用能够与阑山桌面进行双向数据交换。支持功能注册、数据同步、事件广播等特性。"
+  "desktopComponents": [
+    "Elysia.LanDesktopConnect.GatewayStatus"
+  ],
+  "settingsSections": [
+    "IpcBridgeSettingsSection"
+  ],
+  "exports": [],
+  "messageTypes": [
+    "BunStatusChangedEvent",
+    "ConnectedAppsChangedEvent",
+    "ExternalMessageReceivedEvent",
+    "GatewayTransportConnectionChangedEvent"
+  ],
+  "releaseNotes": "首个 PluginSdk/API 5.0.0 正式版本：升级到 Avalonia 12.1.0 与 FluentAvalonia 3.0.1，修复本地 IPC 传输，新增状态组件、设置页和公共 IPC 控制服务，并适配 LanAirApp market-manifest v2。"
 }

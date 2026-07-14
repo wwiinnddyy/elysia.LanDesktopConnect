@@ -1,0 +1,109 @@
+{
+    "$schema":  "https://raw.githubusercontent.com/wwiinnddyy/LanAirApp/main/airappmarket/schema/market-manifest.schema.json",
+    "schemaVersion":  "2.0.0",
+    "generatedAt":  "2026-07-14T01:47:28.2033961+00:00",
+    "manifest":  {
+                     "id":  "Elysia.LanDesktopConnect",
+                     "name":  "Elysia IPC Bridge",
+                     "description":  "基于 Elysia 的本地 IPC 网关，在阑山桌面与 Tauri、Web、Rust 和 Node.js 应用之间提供双向通信。",
+                     "author":  "Elysia",
+                     "version":  "0.1.0",
+                     "apiVersion":  "5.0.0",
+                     "entranceAssembly":  "Elysia.LanDesktopConnect.dll",
+                     "runtime":  {
+                                     "mode":  "in-proc"
+                                 },
+                     "sharedContracts":  [
+
+                                         ],
+                     "tags":  [
+                                  "ipc",
+                                  "bridge",
+                                  "websocket",
+                                  "gateway",
+                                  "elysia"
+                              ],
+                     "releaseTag":  "v0.1.0",
+                     "releaseAssetName":  "Elysia.LanDesktopConnect.0.1.0.laapp",
+                     "releaseNotes":  "首个 PluginSdk/API 5.0.0 正式版本：升级到 Avalonia 12.1.0 与 FluentAvalonia 3.0.1，修复本地 IPC 传输，新增状态组件、设置页和公共 IPC 控制服务，并适配 LanAirApp market-manifest v2。"
+                 },
+    "compatibility":  {
+                          "minHostVersion":  "0.8.6",
+                          "apiVersion":  "5.0.0",
+                          "sharedContracts":  [
+
+                                              ]
+                      },
+    "repository":  {
+                       "iconUrl":  "https://raw.githubusercontent.com/wwiinnddyy/elysia.LanDesktopConnect/main/assets/elysia.svg",
+                       "projectUrl":  "https://github.com/wwiinnddyy/elysia.LanDesktopConnect",
+                       "readmeUrl":  "https://raw.githubusercontent.com/wwiinnddyy/elysia.LanDesktopConnect/main/README.md",
+                       "homepageUrl":  "https://github.com/wwiinnddyy/elysia.LanDesktopConnect",
+                       "repositoryUrl":  "https://github.com/wwiinnddyy/elysia.LanDesktopConnect",
+                       "tags":  [
+                                    "ipc",
+                                    "bridge",
+                                    "websocket",
+                                    "gateway",
+                                    "elysia"
+                                ],
+                       "releaseNotes":  "首个 PluginSdk/API 5.0.0 正式版本：升级到 Avalonia 12.1.0 与 FluentAvalonia 3.0.1，修复本地 IPC 传输，新增状态组件、设置页和公共 IPC 控制服务，并适配 LanAirApp market-manifest v2。"
+                   },
+    "publication":  {
+                        "releaseTag":  "v0.1.0",
+                        "releaseAssetName":  "Elysia.LanDesktopConnect.0.1.0.laapp",
+                        "downloadUrl":  "https://github.com/wwiinnddyy/elysia.LanDesktopConnect/releases/download/v0.1.0/Elysia.LanDesktopConnect.0.1.0.laapp",
+                        "sha256":  "2d6f5361de3b25c0a7832ad93975b661a817aadea8ba732a0f302b19ae19b5c0",
+                        "packageSizeBytes":  106284,
+                        "releaseNotes":  "首个 PluginSdk/API 5.0.0 正式版本：升级到 Avalonia 12.1.0 与 FluentAvalonia 3.0.1，修复本地 IPC 传输，新增状态组件、设置页和公共 IPC 控制服务，并适配 LanAirApp market-manifest v2。",
+                        "packageSources":  [
+                                               {
+                                                   "kind":  "releaseAsset",
+                                                   "url":  "https://github.com/wwiinnddyy/elysia.LanDesktopConnect/releases/download/v0.1.0/Elysia.LanDesktopConnect.0.1.0.laapp",
+                                                   "assetName":  "Elysia.LanDesktopConnect.0.1.0.laapp",
+                                                   "sha256":  "2d6f5361de3b25c0a7832ad93975b661a817aadea8ba732a0f302b19ae19b5c0",
+                                                   "sizeBytes":  106284,
+                                                   "releaseTag":  "v0.1.0",
+                                                   "priority":  0
+                                               },
+                                               {
+                                                   "kind":  "rawFallback",
+                                                   "url":  "https://raw.githubusercontent.com/wwiinnddyy/elysia.LanDesktopConnect/main/Elysia.LanDesktopConnect.0.1.0.laapp",
+                                                   "assetName":  "Elysia.LanDesktopConnect.0.1.0.laapp",
+                                                   "sha256":  "2d6f5361de3b25c0a7832ad93975b661a817aadea8ba732a0f302b19ae19b5c0",
+                                                   "sizeBytes":  106284,
+                                                   "releaseTag":  "v0.1.0",
+                                                   "priority":  1
+                                               },
+                                               {
+                                                   "kind":  "workspaceLocal",
+                                                   "url":  "workspace://elysia.LanDesktopConnect/Elysia.LanDesktopConnect.0.1.0.laapp",
+                                                   "assetName":  "Elysia.LanDesktopConnect.0.1.0.laapp",
+                                                   "sha256":  "2d6f5361de3b25c0a7832ad93975b661a817aadea8ba732a0f302b19ae19b5c0",
+                                                   "sizeBytes":  106284,
+                                                   "releaseTag":  "v0.1.0",
+                                                   "priority":  2
+                                               }
+                                           ]
+                    },
+    "capabilities":  {
+                         "sharedContracts":  [
+
+                                             ],
+                         "desktopComponents":  [
+                                                   "Elysia.LanDesktopConnect.GatewayStatus"
+                                               ],
+                         "settingsSections":  [
+                                                  "IpcBridgeSettingsSection"
+                                              ],
+                         "exports":  [
+
+                                     ],
+                         "messageTypes":  [
+                                              "BunStatusChangedEvent",
+                                              "ConnectedAppsChangedEvent",
+                                              "ExternalMessageReceivedEvent",
+                                              "GatewayTransportConnectionChangedEvent"
+                                          ]
+                     }
+}

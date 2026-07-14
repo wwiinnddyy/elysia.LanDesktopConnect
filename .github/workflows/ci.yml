@@ -1,0 +1,112 @@
+name: Validate Elysia.LanDesktopConnect
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  BUN_VERSION: "1.3.14"
+  LANMOUNTAIN_SDK_REF: "a858860b3feb006bb054bcd1f293df88dd86eb45"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elysia-landesktopconnect-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: Elysia.LanDesktopConnect
+
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v7
+        with:
+          path: Elysia.LanDesktopConnect
+
+      - name: Checkout production PluginSdk source
+        uses: actions/checkout@v7
+        with:
+          repository: wwiinnddyy/LanMountainDesktop
+          ref: ${{ env.LANMOUNTAIN_SDK_REF }}
+          path: LanMountainDesktop
+
+      - name: Checkout LanAirApp validator
+        uses: actions/checkout@v7
+        with:
+          repository: wwiinnddyy/LanAirApp
+          path: LanAirApp
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Initialize isolated PluginSdk 5 feed
+        shell: pwsh
+        run: .\scripts\Initialize-LocalPackageFeed.ps1 -LanMountainDesktopRoot ..\LanMountainDesktop
+
+      - name: Restore and type-check gateway
+        shell: pwsh
+        working-directory: Elysia.LanDesktopConnect/elysia-gateway
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+
+      - name: Smoke-test gateway transport
+        shell: pwsh
+        run: .\scripts\Test-GatewaySmoke.ps1
+
+      - name: Validate committed metadata
+        shell: pwsh
+        run: .\scripts\Test-PluginConsistency.ps1
+
+      - name: Restore plugin without shared cache
+        shell: pwsh
+        run: dotnet restore .\Elysia.LanDesktopConnect.csproj --force --no-cache -v minimal
+
+      - name: Build plugin package
+        shell: pwsh
+        run: dotnet build .\Elysia.LanDesktopConnect.csproj -c Release --no-restore -v minimal
+
+      - name: Generate and validate market manifest
+        shell: pwsh
+        run: |
+          $manifest = Get-Content .\plugin.json -Encoding UTF8 -Raw | ConvertFrom-Json
+          $assetName = "$($manifest.id).$($manifest.version).laapp"
+          .\scripts\New-MarketManifest.ps1 `
+            -TemplatePath .\airappmarket-entry.template.json `
+            -PackagePath ".\$assetName" `
+            -Version $manifest.version `
+            -ReleaseTag "v$($manifest.version)" `
+            -OutputPath .\artifacts\market-manifest.json
+
+          .\scripts\Test-PluginConsistency.ps1 `
+            -PackagePath ".\$assetName" `
+            -MarketManifestPath .\artifacts\market-manifest.json
+
+          dotnet run --project ..\LanAirApp\airappmarket\tools\AirAppMarket.IndexBuilder -- `
+            --validate-release-package ".\$assetName" `
+            --market-manifest .\artifacts\market-manifest.json `
+            --plugin-id Elysia.LanDesktopConnect
+
+      - name: Upload validated package
+        uses: actions/upload-artifact@v6
+        with:
+          name: Elysia.LanDesktopConnect-${{ github.sha }}
+          path: |
+            Elysia.LanDesktopConnect/Elysia.LanDesktopConnect.*.laapp
+            Elysia.LanDesktopConnect/artifacts/market-manifest.json
+          if-no-files-found: error

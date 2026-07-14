@@ -1,5 +1,6 @@
 using Elysia.LanDesktopConnect.Services;
 using Elysia.LanDesktopConnect.Settings;
+using Elysia.LanDesktopConnect.Widgets;
 using LanMountainDesktop.PluginSdk;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,26 +12,43 @@ public sealed class Plugin : PluginBase
 {
     public override void Initialize(HostBuilderContext context, IServiceCollection services)
     {
-        services.AddSingleton(provider =>
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddSingleton(provider => PluginLocalizer.Create(
+            provider.GetRequiredService<IPluginRuntimeContext>()));
+        services.AddSingleton<ElysiaSettingsService>();
+        services.AddSingleton<BunDetector>();
+        services.AddSingleton<GatewayIpcServer>();
+        services.AddSingleton<IpcMessageRouter>();
+        services.AddSingleton<BunProcessManager>();
+        services.AddSingleton<ElysiaGatewayController>();
+        services.AddSingleton<IHostedService, ElysiaGatewayHostedService>();
+
+        services.AddTransient<IpcBridgeSettingsViewModel>();
+        services.AddPluginSettingsSection<IpcBridgeSettingsPage>(
+            id: ElysiaSettingsService.SectionId,
+            titleLocalizationKey: "settings.ipc_bridge.title",
+            descriptionLocalizationKey: "settings.ipc_bridge.description",
+            iconKey: "PlugConnected",
+            sortOrder: 100);
+
+        services.AddPluginDesktopComponent<GatewayStatusWidget>(new PluginDesktopComponentOptions
         {
-            var runtimeContext = provider.GetRequiredService<IPluginRuntimeContext>();
-            Directory.CreateDirectory(runtimeContext.DataDirectory);
-            return new ElysiaSettingsService(runtimeContext.DataDirectory);
+            ComponentId = GatewayStatusWidget.ComponentId,
+            DisplayName = "Elysia IPC 网关状态",
+            DisplayNameLocalizationKey = "widget.gateway_status.display_name",
+            IconKey = "PlugConnected",
+            Category = "Elysia",
+            MinWidthCells = 3,
+            MinHeightCells = 2,
+            AllowDesktopPlacement = true,
+            AllowStatusBarPlacement = false,
+            ResizeMode = PluginDesktopComponentResizeMode.Free,
+            CornerRadiusPreset = PluginCornerRadiusPreset.Component
         });
 
-        services.AddSingleton<BunDetector>();
-
-        services.AddSingleton<BunProcessManager>();
-
-        services.AddHostedService<ElysiaGatewayHostedService>();
-
-        services.AddSingleton<NamedPipeClient>();
-
-        services.AddSingleton<IpcMessageRouter>();
-
-        services.AddSingleton<IpcBridgeSettingsViewModel>();
-
-        // 注册设置页面 - 使用 [SettingsPageInfo] 特性自动注册
-        services.AddSingleton<IpcBridgeSettingsPage>();
+        services.AddPluginPublicIpc<IElysiaBridgePublicApi, ElysiaBridgePublicApi>(
+            objectId: "elysia-bridge");
     }
 }
