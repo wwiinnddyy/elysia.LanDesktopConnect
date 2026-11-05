@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$RepositoryRoot,
     [string]$PackagePath,
@@ -20,9 +20,9 @@ function Assert-Equal($Actual, $Expected, [string]$FieldName) {
 }
 
 function Read-PackageManifest([System.IO.Compression.ZipArchive]$Archive) {
-    $entries = @($Archive.Entries | Where-Object { $_.FullName -eq "plugin.json" })
+    $entries = @($Archive.Entries | Where-Object { $_.FullName -eq "airapp.json" })
     if ($entries.Count -ne 1) {
-        throw "Package must contain exactly one root plugin.json."
+        throw "Package must contain exactly one root airapp.json."
     }
 
     $stream = $entries[0].Open()
@@ -37,7 +37,7 @@ function Read-PackageManifest([System.IO.Compression.ZipArchive]$Archive) {
 }
 
 $projectPath = Join-Path $RepositoryRoot "Elysia.LanDesktopConnect.csproj"
-$manifestPath = Join-Path $RepositoryRoot "plugin.json"
+$manifestPath = Join-Path $RepositoryRoot "airapp.json"
 $marketTemplatePath = Join-Path $RepositoryRoot "airappmarket-entry.template.json"
 
 [xml]$project = Get-Content -LiteralPath $projectPath -Encoding UTF8 -Raw
@@ -48,7 +48,7 @@ $projectVersion = [string]$versionNode.InnerText
 $manifest = Get-Content -LiteralPath $manifestPath -Encoding UTF8 -Raw | ConvertFrom-Json
 Assert-Equal $manifest.id "Elysia.LanDesktopConnect" "plugin id"
 Assert-Equal $manifest.version $projectVersion "plugin version"
-Assert-Equal $manifest.apiVersion "5.0.0" "PluginSdk API version"
+Assert-Equal $manifest.apiVersion "1.0.1" "AirApp SDK API version"
 Assert-Equal $manifest.entranceAssembly "Elysia.LanDesktopConnect.dll" "entrance assembly"
 Assert-Equal $manifest.runtime.mode "in-proc" "runtime mode"
 
@@ -65,7 +65,7 @@ $requiredReferences = [ordered]@{
     "Avalonia" = "12.1.0"
     "FluentAvaloniaUI" = "3.0.1"
     "FluentIcons.Avalonia" = "2.1.331"
-    "LanMountainDesktop.PluginSdk" = "5.0.0"
+    "LanMountainDesktop.AirAppSdk" = "1.0.1"
 }
 
 foreach ($packageId in $requiredReferences.Keys) {
@@ -88,9 +88,9 @@ if (Test-Path -LiteralPath $assetsPath -PathType Leaf) {
 }
 
 $template = Get-Content -LiteralPath $marketTemplatePath -Encoding UTF8 -Raw | ConvertFrom-Json
-Assert-Equal $template.minHostVersion "0.8.6" "market minHostVersion"
+Assert-Equal $template.minHostVersion "0.9.1" "market minHostVersion"
 if (@($template.desktopComponents) -notcontains "Elysia.LanDesktopConnect.GatewayStatus") {
-    throw "Market capabilities must declare the API 5 gateway status component."
+    throw "Market capabilities must declare the gateway status component."
 }
 if (@($template.settingsSections) -notcontains "IpcBridgeSettingsSection") {
     throw "Market capabilities must declare IpcBridgeSettingsSection."
@@ -108,7 +108,7 @@ if (-not [string]::IsNullOrWhiteSpace($PackagePath)) {
     try {
         $entryNames = @($archive.Entries | ForEach-Object { $_.FullName })
         $requiredEntries = @(
-            "plugin.json",
+            "airapp.json",
             "Elysia.LanDesktopConnect.dll",
             "Elysia.LanDesktopConnect.deps.json",
             "Localization/en-US.json",
@@ -162,8 +162,8 @@ if (-not [string]::IsNullOrWhiteSpace($MarketManifestPath)) {
     Assert-Equal $market.schemaVersion "2.0.0" "market schemaVersion"
     Assert-Equal $market.manifest.id $manifest.id "market plugin id"
     Assert-Equal $market.manifest.version $manifest.version "market plugin version"
-    Assert-Equal $market.manifest.apiVersion "5.0.0" "market API version"
-    Assert-Equal $market.compatibility.minHostVersion "0.8.6" "market compatibility minHostVersion"
+    Assert-Equal $market.manifest.apiVersion "1.0.1" "market API version"
+    Assert-Equal $market.compatibility.minHostVersion "0.9.1" "market compatibility minHostVersion"
     Assert-Equal $market.publication.releaseTag "v$projectVersion" "market release tag"
     Assert-Equal $market.publication.releaseAssetName "$($manifest.id).$projectVersion.laapp" "market release asset"
 

@@ -1,11 +1,11 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Avalonia.Threading;
 using Elysia.LanDesktopConnect.Services;
-using LanMountainDesktop.PluginSdk;
+using LanMountainDesktop.AirAppSdk;
 
 namespace Elysia.LanDesktopConnect.Settings;
 
@@ -15,7 +15,7 @@ public sealed class IpcBridgeSettingsViewModel : INotifyPropertyChanged, IDispos
     private readonly ElysiaGatewayController _controller;
     private readonly BunProcessManager _bunManager;
     private readonly IpcMessageRouter _router;
-    private readonly PluginLocalizer _localizer;
+    private readonly AirAppLocalizer _localizer;
     private readonly IDisposable _appsSubscription;
     private readonly DispatcherTimer _uptimeTimer;
 
@@ -33,8 +33,8 @@ public sealed class IpcBridgeSettingsViewModel : INotifyPropertyChanged, IDispos
         ElysiaSettingsService settingsService,
         ElysiaGatewayController controller,
         IpcMessageRouter router,
-        IPluginMessageBus messageBus,
-        PluginLocalizer localizer)
+        IAirAppMessageBus messageBus,
+        AirAppLocalizer localizer)
     {
         _settingsService = settingsService;
         _controller = controller;

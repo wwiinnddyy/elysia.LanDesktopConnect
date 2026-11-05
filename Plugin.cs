@@ -1,22 +1,22 @@
-using Elysia.LanDesktopConnect.Services;
+﻿using Elysia.LanDesktopConnect.Services;
 using Elysia.LanDesktopConnect.Settings;
 using Elysia.LanDesktopConnect.Widgets;
-using LanMountainDesktop.PluginSdk;
+using LanMountainDesktop.AirAppSdk;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace Elysia.LanDesktopConnect;
 
-[PluginEntrance]
-public sealed class Plugin : PluginBase
+[AirAppEntrance]
+public sealed class Plugin : AirAppBase
 {
     public override void Initialize(HostBuilderContext context, IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddSingleton(provider => PluginLocalizer.Create(
-            provider.GetRequiredService<IPluginRuntimeContext>()));
+        services.AddSingleton(provider => AirAppLocalizer.Create(
+            provider.GetRequiredService<IAirAppRuntimeContext>()));
         services.AddSingleton<ElysiaSettingsService>();
         services.AddSingleton<BunDetector>();
         services.AddSingleton<GatewayIpcServer>();
@@ -26,14 +26,14 @@ public sealed class Plugin : PluginBase
         services.AddSingleton<IHostedService, ElysiaGatewayHostedService>();
 
         services.AddTransient<IpcBridgeSettingsViewModel>();
-        services.AddPluginSettingsSection<IpcBridgeSettingsPage>(
+        services.AddAirAppSettingsSection<IpcBridgeSettingsPage>(
             id: ElysiaSettingsService.SectionId,
             titleLocalizationKey: "settings.ipc_bridge.title",
             descriptionLocalizationKey: "settings.ipc_bridge.description",
             iconKey: "PlugConnected",
             sortOrder: 100);
 
-        services.AddPluginDesktopComponent<GatewayStatusWidget>(new PluginDesktopComponentOptions
+        services.AddAirAppComponent<GatewayStatusWidget>(new AirAppComponentOptions
         {
             ComponentId = GatewayStatusWidget.ComponentId,
             DisplayName = "Elysia IPC 网关状态",
@@ -44,11 +44,11 @@ public sealed class Plugin : PluginBase
             MinHeightCells = 2,
             AllowDesktopPlacement = true,
             AllowStatusBarPlacement = false,
-            ResizeMode = PluginDesktopComponentResizeMode.Free,
-            CornerRadiusPreset = PluginCornerRadiusPreset.Component
+            ResizeMode = AirAppComponentResizeMode.Free,
+            CornerRadiusPreset = AirAppCornerRadiusPreset.Default
         });
 
-        services.AddPluginPublicIpc<IElysiaBridgePublicApi, ElysiaBridgePublicApi>(
+        services.AddAirAppPublicIpc<IElysiaBridgePublicApi, ElysiaBridgePublicApi>(
             objectId: "elysia-bridge");
     }
 }

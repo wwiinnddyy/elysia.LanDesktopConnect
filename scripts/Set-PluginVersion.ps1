@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [string]$RepositoryRoot
@@ -31,7 +31,7 @@ function Write-Utf8File([string]$Path, [string]$Content) {
 }
 
 $projectPath = Join-Path $RepositoryRoot "Elysia.LanDesktopConnect.csproj"
-$manifestPath = Join-Path $RepositoryRoot "plugin.json"
+$manifestPath = Join-Path $RepositoryRoot "airapp.json"
 $gatewayPackagePath = Join-Path $RepositoryRoot "elysia-gateway\package.json"
 
 $projectContent = [System.IO.File]::ReadAllText($projectPath)

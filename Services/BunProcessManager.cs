@@ -1,15 +1,15 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
-using LanMountainDesktop.PluginSdk;
+using LanMountainDesktop.AirAppSdk;
 
 namespace Elysia.LanDesktopConnect.Services;
 
 public sealed partial class BunProcessManager : INotifyPropertyChanged, IDisposable
 {
     private readonly ElysiaSettingsService _settingsService;
-    private readonly IPluginMessageBus _messageBus;
+    private readonly IAirAppMessageBus _messageBus;
     private readonly GatewayIpcServer _ipcServer;
     private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
     private readonly object _logLock = new();
@@ -28,9 +28,9 @@ public sealed partial class BunProcessManager : INotifyPropertyChanged, IDisposa
     private DateTimeOffset? _startTime;
 
     public BunProcessManager(
-        IPluginRuntimeContext runtimeContext,
+        IAirAppRuntimeContext runtimeContext,
         ElysiaSettingsService settingsService,
-        IPluginMessageBus messageBus,
+        IAirAppMessageBus messageBus,
         GatewayIpcServer ipcServer)
     {
         ArgumentNullException.ThrowIfNull(runtimeContext);
@@ -39,7 +39,7 @@ public sealed partial class BunProcessManager : INotifyPropertyChanged, IDisposa
         _messageBus = messageBus;
         _ipcServer = ipcServer;
         DataDirectory = runtimeContext.DataDirectory;
-        _gatewayDirectory = Path.Combine(runtimeContext.PluginDirectory, "elysia-gateway");
+        _gatewayDirectory = Path.Combine(runtimeContext.AirAppDirectory, "elysia-gateway");
         Directory.CreateDirectory(DataDirectory);
     }
 

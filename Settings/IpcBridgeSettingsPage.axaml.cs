@@ -1,9 +1,9 @@
-using Avalonia.Markup.Xaml;
-using LanMountainDesktop.PluginSdk;
+﻿using Avalonia.Markup.Xaml;
+using LanMountainDesktop.AirAppSdk;
 
 namespace Elysia.LanDesktopConnect.Settings;
 
-public partial class IpcBridgeSettingsPage : SettingsPageBase
+public partial class IpcBridgeSettingsPage : AirAppSettingsPageBase
 {
     public IpcBridgeSettingsPage()
     {

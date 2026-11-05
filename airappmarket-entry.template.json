@@ -1,10 +1,10 @@
-{
+﻿{
   "repositoryUrl": "https://github.com/wwiinnddyy/elysia.LanDesktopConnect",
   "projectUrl": "https://github.com/wwiinnddyy/elysia.LanDesktopConnect",
   "readmeUrl": "https://raw.githubusercontent.com/wwiinnddyy/elysia.LanDesktopConnect/main/README.md",
   "homepageUrl": "https://github.com/wwiinnddyy/elysia.LanDesktopConnect",
   "iconUrl": "https://raw.githubusercontent.com/wwiinnddyy/elysia.LanDesktopConnect/main/assets/elysia.svg",
-  "minHostVersion": "0.8.6",
+  "minHostVersion": "0.9.1",
   "tags": [
     "ipc",
     "bridge",

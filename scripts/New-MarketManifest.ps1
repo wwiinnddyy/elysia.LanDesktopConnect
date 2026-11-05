@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$TemplatePath,
     [Parameter(Mandatory = $true)][string]$PackagePath,
@@ -55,9 +55,9 @@ function Get-RepositoryInfo([string]$RepositoryUrl) {
 function Get-PackageManifest([string]$ArchivePath) {
     $archive = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
     try {
-        $entries = @($archive.Entries | Where-Object { $_.FullName -eq "plugin.json" })
+        $entries = @($archive.Entries | Where-Object { $_.FullName -eq "airapp.json" })
         if ($entries.Count -ne 1) {
-            throw "Plugin package '$ArchivePath' must contain exactly one root plugin.json."
+            throw "AirApp package '$ArchivePath' must contain exactly one root airapp.json."
         }
 
         $stream = $entries[0].Open()
@@ -80,15 +80,15 @@ $resolvedPackagePath = (Resolve-Path -LiteralPath $PackagePath -ErrorAction Stop
 $manifest = Get-PackageManifest -ArchivePath $resolvedPackagePath
 
 Assert-ThreePartVersion -Value $Version -FieldName "Version"
-Assert-ThreePartVersion -Value ([string]$manifest.version) -FieldName "plugin.json version"
-Assert-ThreePartVersion -Value ([string]$manifest.apiVersion) -FieldName "plugin.json apiVersion"
+Assert-ThreePartVersion -Value ([string]$manifest.version) -FieldName "airapp.json version"
+Assert-ThreePartVersion -Value ([string]$manifest.apiVersion) -FieldName "airapp.json apiVersion"
 
 if ([string]$manifest.version -ne $Version) {
     throw "Requested version '$Version' does not match package manifest version '$($manifest.version)'."
 }
 
-if ([string]$manifest.apiVersion -ne "5.0.0") {
-    throw "Production market releases must target PluginSdk API 5.0.0, actual '$($manifest.apiVersion)'."
+if ([string]$manifest.apiVersion -ne "1.0.1") {
+    throw "Production market releases must target AirApp SDK API 1.0.1, actual '$($manifest.apiVersion)'."
 }
 
 if ($ReleaseTag -ne "v$Version") {
@@ -125,8 +125,8 @@ $exports = @(Get-ArrayValue -Object $template -Name "exports")
 $messageTypes = @(Get-ArrayValue -Object $template -Name "messageTypes")
 $minHostVersion = [string](Get-PropertyValue $template "minHostVersion")
 Assert-ThreePartVersion -Value $minHostVersion -FieldName "minHostVersion"
-if ([Version]$minHostVersion -lt [Version]"0.8.6") {
-    throw "PluginSdk 5 releases require minHostVersion 0.8.6 or newer."
+if ([Version]$minHostVersion -lt [Version]"0.9.1") {
+    throw "AirApp SDK 1.x releases require minHostVersion 0.9.1 or newer."
 }
 
 $releaseNotes = [string](Get-PropertyValue $template "releaseNotes")

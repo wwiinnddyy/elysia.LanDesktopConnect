@@ -1,20 +1,20 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
-using LanMountainDesktop.PluginSdk;
+using LanMountainDesktop.AirAppSdk;
 
 namespace Elysia.LanDesktopConnect.Services;
 
 public sealed class IpcMessageRouter : IDisposable
 {
     private readonly GatewayIpcServer _ipcServer;
-    private readonly IPluginMessageBus _messageBus;
+    private readonly IAirAppMessageBus _messageBus;
     private readonly ConcurrentDictionary<string, Func<IpcMessage, Task>> _handlers =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, ConnectedAppInfo> _connectedApps =
         new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
-    public IpcMessageRouter(GatewayIpcServer ipcServer, IPluginMessageBus messageBus)
+    public IpcMessageRouter(GatewayIpcServer ipcServer, IAirAppMessageBus messageBus)
     {
         _ipcServer = ipcServer;
         _messageBus = messageBus;

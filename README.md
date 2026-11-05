@@ -1,24 +1,24 @@
-# Elysia.LanDesktopConnect
+﻿# Elysia.LanDesktopConnect
 
 Elysia IPC Bridge 是阑山桌面的本地通信插件。它在插件进程内托管安全边界清晰的 IPC 服务端，并启动一个仅监听 `127.0.0.1` 的 Elysia WebSocket 网关，让 Tauri、Web、Rust、Node.js 等本机应用能够与阑山桌面交换消息。
 
-当前版本为 **0.1.0**，面向生产 `LanMountainDesktop.PluginSdk` / API **5.0.0**，最低宿主版本为 **0.8.6**。
+当前版本为 **0.2.0**，面向生产 `LanMountainDesktop.AirAppSdk` / API **1.0.1**。
 
 ## 功能
 
 - 自动检测 Bun，支持手动启动、停止、重启和异常退出自动恢复。
 - Windows 使用命名管道，Linux/macOS 使用 Unix Domain Socket 连接 C# 插件与 Bun 网关。
 - 提供 `ws://127.0.0.1:<port>/bridge`、`/health`、`/api/apps` 和 `/api/capabilities`。
-- 提供 API 5 自定义设置页 `IpcBridgeSettingsSection`。
+- 提供自定义设置页 `IpcBridgeSettingsSection`。
 - 提供桌面组件 `Elysia.LanDesktopConnect.GatewayStatus`。
 - 通过对象 ID `elysia-bridge` 暴露强类型公共 IPC 服务 `IElysiaBridgePublicApi`。
-- 使用 PluginSdk v5 设置服务保存配置，并在首次升级时导入旧版 `Data/settings.json`。
+- 使用 AirApp SDK 设置服务保存配置，并在首次升级时导入旧版 `Data/settings.json`。
 - 提供中英文本地化、market-manifest v2、可重复发布脚本和包一致性校验。
 
 ## 运行要求
 
-- LanMountainDesktop 0.8.6 或更高版本。
-- LanMountainDesktop Plugin API 5.0.0。
+- LanMountainDesktop（搭载 AirApp SDK 1.0.1 的版本）。
+- LanMountainDesktop AirApp API 1.0.1。
 - .NET 10（由宿主提供）。
 - [Bun](https://bun.sh/docs/installation)。建议使用当前稳定版。
 - 首次启动网关时需要联网恢复 `elysia-gateway/bun.lock` 固定的生产依赖；之后使用本地 `node_modules` 缓存。
@@ -64,7 +64,7 @@ Elysia IPC Bridge 是阑山桌面的本地通信插件。它在插件进程内�
 ## 架构
 
 ```text
-LanMountainDesktop (PluginSdk API 5)
+LanMountainDesktop (AirApp SDK 1.0.1)
   ├─ 设置页 / 桌面状态组件 / 公共 IPC 服务
   ├─ BunProcessManager
   └─ GatewayIpcServer
@@ -75,10 +75,7 @@ LanMountainDesktop (PluginSdk API 5)
 
 ## 开发与验证
 
-仓库旁需要有 `LanMountainDesktop` 源码，用于生成未发布到 NuGet.org 的生产 PluginSdk 5 本地包：
-
-```powershell
-.\scripts\Initialize-LocalPackageFeed.ps1
+SDK 包 `LanMountainDesktop.AirAppSdk.1.0.1` 来自 GitHub Packages（还原需凭据，见 NuGet.config 注释），或把主仓 `artifacts/nuget/LanMountainDesktop.AirAppSdk.1.0.1.nupkg` 放进本仓库 `packages/` 本地源。
 
 Push-Location .\elysia-gateway
 bun install --frozen-lockfile

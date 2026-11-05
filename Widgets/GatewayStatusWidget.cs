@@ -1,9 +1,9 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
-using LanMountainDesktop.PluginSdk;
+using LanMountainDesktop.AirAppSdk;
 using Elysia.LanDesktopConnect.Services;
 
 namespace Elysia.LanDesktopConnect.Widgets;
@@ -12,27 +12,27 @@ internal sealed class GatewayStatusWidget : Border
 {
     public const string ComponentId = "Elysia.LanDesktopConnect.GatewayStatus";
 
-    private readonly PluginDesktopComponentContext _context;
+    private readonly AirAppComponentContext _context;
     private readonly BunProcessManager _bunManager;
     private readonly IpcMessageRouter _router;
-    private readonly IPluginMessageBus _messageBus;
-    private readonly PluginLocalizer _localizer;
+    private readonly IAirAppMessageBus _messageBus;
+    private readonly AirAppLocalizer _localizer;
     private readonly Border _statusDot;
     private readonly TextBlock _statusText;
     private readonly TextBlock _endpointText;
     private readonly TextBlock _appsText;
     private readonly List<IDisposable> _subscriptions = [];
 
-    public GatewayStatusWidget(PluginDesktopComponentContext context)
+    public GatewayStatusWidget(AirAppComponentContext context)
     {
         _context = context;
         _bunManager = context.GetService<BunProcessManager>()
             ?? throw new InvalidOperationException("BunProcessManager is not available.");
         _router = context.GetService<IpcMessageRouter>()
             ?? throw new InvalidOperationException("IpcMessageRouter is not available.");
-        _messageBus = context.GetService<IPluginMessageBus>()
-            ?? throw new InvalidOperationException("IPluginMessageBus is not available.");
-        _localizer = PluginLocalizer.Create(context);
+        _messageBus = context.GetService<IAirAppMessageBus>()
+            ?? throw new InvalidOperationException("IAirAppMessageBus is not available.");
+        _localizer = AirAppLocalizer.Create(context);
 
         _statusDot = new Border
         {
@@ -185,7 +185,7 @@ internal sealed class GatewayStatusWidget : Border
 
         Padding = new Thickness(Math.Clamp(basis * 0.09, 14, 24));
         CornerRadius = new CornerRadius(_context.ResolveCornerRadius(
-            PluginCornerRadiusPreset.Component,
+            AirAppCornerRadiusPreset.Default,
             minimum: 12,
             maximum: 28));
         _statusText.FontSize = Math.Clamp(basis * 0.085, 14, 20);

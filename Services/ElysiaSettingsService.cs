@@ -1,5 +1,5 @@
-using System.Text.Json;
-using LanMountainDesktop.PluginSdk;
+﻿using System.Text.Json;
+using LanMountainDesktop.AirAppSdk;
 
 namespace Elysia.LanDesktopConnect.Services;
 
@@ -39,13 +39,13 @@ public sealed class ElysiaSettingsService
     };
 
     private readonly ISettingsService _settingsService;
-    private readonly IPluginRuntimeContext _runtimeContext;
+    private readonly IAirAppRuntimeContext _runtimeContext;
     private readonly object _syncRoot = new();
     private ElysiaSettings _settings;
 
     public ElysiaSettingsService(
         ISettingsService settingsService,
-        IPluginRuntimeContext runtimeContext)
+        IAirAppRuntimeContext runtimeContext)
     {
         _settingsService = settingsService;
         _runtimeContext = runtimeContext;
@@ -102,7 +102,7 @@ public sealed class ElysiaSettingsService
     private ElysiaSettings LoadFromHost()
     {
         var settings = _settingsService.LoadSection<ElysiaSettings>(
-            SettingsScope.Plugin,
+            AirAppSettingsScope.AirApp,
             _runtimeContext.Manifest.Id,
             SectionId);
         Normalize(settings);
@@ -112,7 +112,7 @@ public sealed class ElysiaSettingsService
     private void SaveToHost(ElysiaSettings settings, IReadOnlyCollection<string>? changedKeys = null)
     {
         _settingsService.SaveSection(
-            SettingsScope.Plugin,
+            AirAppSettingsScope.AirApp,
             _runtimeContext.Manifest.Id,
             SectionId,
             settings,

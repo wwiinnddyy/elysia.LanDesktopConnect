@@ -9,10 +9,14 @@ on:
 env:
   DOTNET_VERSION: "10.0.x"
   BUN_VERSION: "1.3.14"
-  LANMOUNTAIN_SDK_REF: "a858860b3feb006bb054bcd1f293df88dd86eb45"
+  # lanmountain 源的凭据槽（NuGet.config 用 %VAR% 取用）。实测工作流自带的 GITHUB_TOKEN 就读得到公开包：
+  # 同一 job 里假 token 报 NU1301/401，换成 GITHUB_TOKEN 就还原成功——不需要再配 PAT 或仓库 secret。
+  LANMOUNTAIN_PACKAGES_USER: ${{ github.actor }}
+  LANMOUNTAIN_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: elysia-landesktopconnect-ci-${{ github.ref }}
@@ -31,13 +35,6 @@ jobs:
         with:
           path: Elysia.LanDesktopConnect
 
-      - name: Checkout production PluginSdk source
-        uses: actions/checkout@v7
-        with:
-          repository: wwiinnddyy/LanMountainDesktop
-          ref: ${{ env.LANMOUNTAIN_SDK_REF }}
-          path: LanMountainDesktop
-
       - name: Checkout LanAirApp validator
         uses: actions/checkout@v7
         with:
@@ -54,10 +51,6 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Initialize isolated PluginSdk 5 feed
-        shell: pwsh
-        run: .\scripts\Initialize-LocalPackageFeed.ps1 -LanMountainDesktopRoot ..\LanMountainDesktop
-
       - name: Restore and type-check gateway
         shell: pwsh
         working-directory: Elysia.LanDesktopConnect/elysia-gateway
@@ -71,12 +64,14 @@ jobs:
 
       - name: Validate committed metadata
         shell: pwsh
-        run: .\scripts\Test-PluginConsistency.ps1
+        run: .\scripts\Test-PluginConsistency.ps1 -RepositoryRoot (Resolve-Path ".").Path
 
       - name: Restore plugin without shared cache
         shell: pwsh
         run: dotnet restore .\Elysia.LanDesktopConnect.csproj --force --no-cache -v minimal
 
+      # 构建即打包：AirApp SDK 的 MSBuild target 产出 .laapp，
+      # 并强制校验 airapp.json 与 .deps.json 存在。
       - name: Build plugin package
         shell: pwsh
         run: dotnet build .\Elysia.LanDesktopConnect.csproj -c Release --no-restore -v minimal
@@ -84,7 +79,7 @@ jobs:
       - name: Generate and validate market manifest
         shell: pwsh
         run: |
-          $manifest = Get-Content .\plugin.json -Encoding UTF8 -Raw | ConvertFrom-Json
+          $manifest = Get-Content .\airapp.json -Encoding UTF8 -Raw | ConvertFrom-Json
           $assetName = "$($manifest.id).$($manifest.version).laapp"
           .\scripts\New-MarketManifest.ps1 `
             -TemplatePath .\airappmarket-entry.template.json `
@@ -94,6 +89,7 @@ jobs:
             -OutputPath .\artifacts\market-manifest.json
 
           .\scripts\Test-PluginConsistency.ps1 `
+            -RepositoryRoot (Resolve-Path ".").Path `
             -PackagePath ".\$assetName" `
             -MarketManifestPath .\artifacts\market-manifest.json
 
@@ -103,7 +99,7 @@ jobs:
             --plugin-id Elysia.LanDesktopConnect
 
       - name: Upload validated package
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: Elysia.LanDesktopConnect-${{ github.sha }}
           path: |

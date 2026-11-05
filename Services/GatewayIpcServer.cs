@@ -1,10 +1,10 @@
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using LanMountainDesktop.PluginSdk;
+using LanMountainDesktop.AirAppSdk;
 
 namespace Elysia.LanDesktopConnect.Services;
 
@@ -25,7 +25,7 @@ public sealed class GatewayIpcServer : IDisposable, IAsyncDisposable
     private StreamWriter? _writer;
     private bool _disposed;
 
-    public GatewayIpcServer(IPluginRuntimeContext runtimeContext)
+    public GatewayIpcServer(IAirAppRuntimeContext runtimeContext)
     {
         ArgumentNullException.ThrowIfNull(runtimeContext);
 

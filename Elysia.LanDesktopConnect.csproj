@@ -1,10 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <AssemblyName>Elysia.LanDesktopConnect</AssemblyName>
     <RootNamespace>Elysia.LanDesktopConnect</RootNamespace>
     <OutputType>Library</OutputType>
@@ -28,8 +28,8 @@
     <PackageReference Include="FluentAvaloniaUI" Version="3.0.1" ExcludeAssets="runtime;native" PrivateAssets="all" />
     <PackageReference Include="FluentIcons.Avalonia" Version="2.1.331" ExcludeAssets="runtime;native" PrivateAssets="all" />
     <PackageReference Include="dotnetCampus.Ipc" Version="2.0.0-alpha436" ExcludeAssets="runtime;native" PrivateAssets="all" />
-    <PackageReference Include="LanMountainDesktop.PluginSdk" Version="5.0.0" ExcludeAssets="runtime;native" PrivateAssets="all" />
-    <None Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    <PackageReference Include="LanMountainDesktop.AirAppSdk" Version="1.0.1" ExcludeAssets="runtime;native" PrivateAssets="all" />
+    <None Include="airapp.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Localization\*.json" CopyToOutputDirectory="PreserveNewest" Link="Localization\%(Filename)%(Extension)" />
     <None Include="assets\elysia.svg" CopyToOutputDirectory="PreserveNewest" Link="assets\elysia.svg" />
     <None Include="elysia-gateway\package.json" CopyToOutputDirectory="PreserveNewest" Link="elysia-gateway\package.json" />

@@ -4,17 +4,21 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Committed three-part plugin version, for example 0.1.0"
+        description: "Committed three-part plugin version, for example 0.2.0"
         required: true
         type: string
 
 env:
   DOTNET_VERSION: "10.0.x"
   BUN_VERSION: "1.3.14"
-  LANMOUNTAIN_SDK_REF: "a858860b3feb006bb054bcd1f293df88dd86eb45"
+  # lanmountain 源的凭据槽（NuGet.config 用 %VAR% 取用）。实测工作流自带的 GITHUB_TOKEN 就读得到公开包：
+  # 同一 job 里假 token 报 NU1301/401，换成 GITHUB_TOKEN 就还原成功——不需要再配 PAT 或仓库 secret。
+  LANMOUNTAIN_PACKAGES_USER: ${{ github.actor }}
+  LANMOUNTAIN_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 permissions:
   contents: write
+  packages: read
 
 concurrency:
   group: elysia-landesktopconnect-release-${{ github.event.inputs.version }}
@@ -33,13 +37,6 @@ jobs:
         with:
           fetch-depth: 0
           path: Elysia.LanDesktopConnect
-
-      - name: Checkout production PluginSdk source
-        uses: actions/checkout@v7
-        with:
-          repository: wwiinnddyy/LanMountainDesktop
-          ref: ${{ env.LANMOUNTAIN_SDK_REF }}
-          path: LanMountainDesktop
 
       - name: Checkout LanAirApp validator
         uses: actions/checkout@v7
@@ -69,12 +66,12 @@ jobs:
             throw "Release version must be a three-part version."
           }
 
-          $manifest = Get-Content .\plugin.json -Encoding UTF8 -Raw | ConvertFrom-Json
+          $manifest = Get-Content .\airapp.json -Encoding UTF8 -Raw | ConvertFrom-Json
           if ($manifest.version -ne $requestedVersion) {
-            throw "Committed plugin.json version '$($manifest.version)' does not match requested '$requestedVersion'."
+            throw "Committed airapp.json version '$($manifest.version)' does not match requested '$requestedVersion'."
           }
-          if ($manifest.apiVersion -ne "5.0.0") {
-            throw "Release must target PluginSdk API 5.0.0."
+          if ($manifest.apiVersion -ne "1.0.1") {
+            throw "Release must target AirApp API 1.0.1."
           }
 
           $releaseTag = "v$requestedVersion"
@@ -87,10 +84,6 @@ jobs:
           "version=$requestedVersion" >> $env:GITHUB_OUTPUT
           "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
           "asset_name=$assetName" >> $env:GITHUB_OUTPUT
-
-      - name: Initialize isolated PluginSdk 5 feed
-        shell: pwsh
-        run: .\scripts\Initialize-LocalPackageFeed.ps1 -LanMountainDesktopRoot ..\LanMountainDesktop
 
       - name: Restore gateway dependencies
         shell: pwsh
@@ -108,17 +101,19 @@ jobs:
 
       - name: Validate committed metadata
         shell: pwsh
-        run: .\scripts\Test-PluginConsistency.ps1
+        run: .\scripts\Test-PluginConsistency.ps1 -RepositoryRoot (Resolve-Path ".").Path
 
       - name: Restore plugin without shared cache
         shell: pwsh
         run: dotnet restore .\Elysia.LanDesktopConnect.csproj --force --no-cache -v minimal
 
+      # 构建即打包：AirApp SDK 的 MSBuild target 产出 .laapp，
+      # 并强制校验 airapp.json 与 .deps.json 存在。
       - name: Build plugin package
         shell: pwsh
         run: dotnet build .\Elysia.LanDesktopConnect.csproj -c Release --no-restore -v minimal
 
-      - name: Generate market manifest v2
+      - name: Generate market manifest
         shell: pwsh
         run: |
           .\scripts\New-MarketManifest.ps1 `
@@ -132,6 +127,7 @@ jobs:
         shell: pwsh
         run: |
           .\scripts\Test-PluginConsistency.ps1 `
+            -RepositoryRoot (Resolve-Path ".").Path `
             -PackagePath ".\${{ steps.metadata.outputs.asset_name }}" `
             -MarketManifestPath .\artifacts\market-manifest.json
 
@@ -159,13 +155,13 @@ jobs:
           body: |
             ## Elysia.LanDesktopConnect ${{ steps.metadata.outputs.release_tag }}
 
-            - Production LanMountainDesktop PluginSdk/API 5.0.0
+            - AirApp SDK 1.0.1
             - Avalonia 12.1.0 and FluentAvalonia 3.0.1 compatibility
             - Correct named-pipe / Unix-socket bridge and localhost-only Elysia gateway
-            - API 5 settings section, gateway status desktop component, and public IPC service
+            - Settings section, gateway status desktop component, and public IPC service
             - LanAirApp market-manifest schema 2.0.0
 
-            Requirements: LanMountainDesktop 0.8.6+ and Bun.
+            Requirements: LanMountainDesktop（搭载 AirApp SDK 1.0.1 的版本） and Bun.
           files: |
             Elysia.LanDesktopConnect/${{ steps.metadata.outputs.asset_name }}
             Elysia.LanDesktopConnect/artifacts/market-manifest.json
