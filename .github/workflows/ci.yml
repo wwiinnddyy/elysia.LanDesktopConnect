@@ -35,12 +35,6 @@ jobs:
         with:
           path: Elysia.LanDesktopConnect
 
-      - name: Checkout LanAirApp validator
-        uses: actions/checkout@v7
-        with:
-          repository: wwiinnddyy/LanAirApp
-          path: LanAirApp
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
@@ -76,7 +70,9 @@ jobs:
         shell: pwsh
         run: dotnet build .\Elysia.LanDesktopConnect.csproj -c Release --no-restore -v minimal
 
-      - name: Generate and validate market manifest
+      # 发布包与市场清单的交叉校验由 Test-PluginConsistency 承担；市场索引侧的校验
+      # 在 LanAirApp 自己的 airappmarket-validate 工作流里做，插件仓库不再调 IndexBuilder。
+      - name: Generate market manifest
         shell: pwsh
         run: |
           $manifest = Get-Content .\airapp.json -Encoding UTF8 -Raw | ConvertFrom-Json
@@ -92,11 +88,6 @@ jobs:
             -RepositoryRoot (Resolve-Path ".").Path `
             -PackagePath ".\$assetName" `
             -MarketManifestPath .\artifacts\market-manifest.json
-
-          dotnet run --project ..\LanAirApp\airappmarket\tools\AirAppMarket.IndexBuilder -- `
-            --validate-release-package ".\$assetName" `
-            --market-manifest .\artifacts\market-manifest.json `
-            --plugin-id Elysia.LanDesktopConnect
 
       - name: Upload validated package
         uses: actions/upload-artifact@v7

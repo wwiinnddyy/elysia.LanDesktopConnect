@@ -38,12 +38,6 @@ jobs:
           fetch-depth: 0
           path: Elysia.LanDesktopConnect
 
-      - name: Checkout LanAirApp validator
-        uses: actions/checkout@v7
-        with:
-          repository: wwiinnddyy/LanAirApp
-          path: LanAirApp
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
@@ -123,6 +117,8 @@ jobs:
             -ReleaseTag "${{ steps.metadata.outputs.release_tag }}" `
             -OutputPath .\artifacts\market-manifest.json
 
+      # 发布包与市场清单的交叉校验由 Test-PluginConsistency 承担；市场索引侧的校验
+      # 在 LanAirApp 自己的 airappmarket-validate 工作流里做，插件仓库不再调 IndexBuilder。
       - name: Validate package and market metadata
         shell: pwsh
         run: |
@@ -130,11 +126,6 @@ jobs:
             -RepositoryRoot (Resolve-Path ".").Path `
             -PackagePath ".\${{ steps.metadata.outputs.asset_name }}" `
             -MarketManifestPath .\artifacts\market-manifest.json
-
-          dotnet run --project ..\LanAirApp\airappmarket\tools\AirAppMarket.IndexBuilder -- `
-            --validate-release-package ".\${{ steps.metadata.outputs.asset_name }}" `
-            --market-manifest .\artifacts\market-manifest.json `
-            --plugin-id Elysia.LanDesktopConnect
 
       - name: Generate checksum
         shell: pwsh
